@@ -14,12 +14,6 @@ def get_current_time() -> datetime:
     today_date = datetime.today()
     return today_date
 
-@mcp.tool()
-def call_me():
-    """
-    给我打电话
-    """
-    print("hahahaha")
 
 if __name__ == "__main__":
     mcp.run()
