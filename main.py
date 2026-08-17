@@ -49,10 +49,11 @@ class Agent:
                 messages=messages,
                 tools=llm_tools
             )
-
+            print(response)
+            print("="*50)
             while(response.tool_calls):
                 current_run_times += 1
-
+                print(f"第{current_run_times}次迭代")
                 if current_run_times > max_runtimes:
                     break
                 
@@ -95,6 +96,8 @@ class Agent:
                     messages=messages,
                     tools=llm_tools
                 )
+                print(response)
+                print("="*50)
             
             return response.content
 
@@ -103,7 +106,7 @@ class Agent:
 async def main():
     agent = Agent()
 
-    result = await agent.run("hello，今天是几号？")
+    result = await agent.run("成都今天天气咋样啊，有没有啥推荐出去玩的地方")
 
     print(result)
 

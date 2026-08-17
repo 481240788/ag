@@ -6,20 +6,30 @@ from mcp.client.stdio import stdio_client
 from mcp.types import Tool
 from typing import Any
 from ErrorClass import ToolRunError
-import sys,json
+import sys,json,os
 
 class MCPManager:
     def __init__(self) -> None:
         #整个项目根目录的绝对路径
         pathmanager = PathManager()
         abs_path = pathmanager.abs_path
+
+        #继承当前Python进程的环境变量
+        env = os.environ.copy()
+
+        #将项目根目录加入PYTHONPATH
+        env["PYTHONPATH"] = (
+            str(abs_path)
+            + os.pathsep
+            + env.get("PYTHONPATH", "")
+        )
         #mcp服务文件的路径
         mcp_file_path = abs_path / "MCP_server" / "mcp_server.py"
         #mcp服务参数
         self.mcp_server_params = StdioServerParameters(
             command=sys.executable,
             args=[str(mcp_file_path)],
-            env=None
+            env=env
         )
 
     @asynccontextmanager
