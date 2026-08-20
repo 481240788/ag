@@ -11,6 +11,9 @@ class Agent:
             api_key:Optional[str]=None
     ) -> None:
         
+        #定义一个短暂的记忆模块
+        self.temp_memory = []
+
         try:
             self.llm_client = LLM_client(
                 base_url=base_url,
@@ -26,21 +29,27 @@ class Agent:
         """
         执行(主程序)
         """
+        
         #当前循环次数
         current_run_times = 0
         #超出循环次数状态码
         is_error = False
         #组装格式化提示词
         llm_user_prompt = user_prompt.format(question=question)
+
         #组装messages
         messages = [
             {
                 "role":"system","content":sys_prompt
-            },
+            }]
+        
+        messages.extend(self.temp_memory[-16:])
+
+        messages.append(
             {
                 "role":"user","content":llm_user_prompt
             }
-        ]
+        )
 
         async with self.mcpmanager.connect_to_mcp() as session:
             #当前可用的工具列表
@@ -54,8 +63,8 @@ class Agent:
                 messages=messages,
                 tools=llm_tools
             )
-            print(response)
-            print("="*50)
+            # print(response)
+            # print("="*50)
             while(response.tool_calls):
                 current_run_times += 1
                 print(f"第{current_run_times}次迭代")
@@ -113,10 +122,23 @@ class Agent:
                     messages=messages,
                     tools=llm_tools
                 )
-                print(response)
-                print("="*50)
+
+                # print(response)
+                # print("="*50)
             if is_error:
                 return '超出最大迭代次数，已终止任务'
+            
+            # #短暂保存历史对话内容
+            self.temp_memory.append(
+                {
+                    "role":"user","content":question
+                }
+            )
+            self.temp_memory.append(
+                {
+                    "role":"assistant","content":response.content
+                }
+            )
             return response.content
 
                 
