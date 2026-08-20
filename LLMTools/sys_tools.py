@@ -31,6 +31,10 @@ def read_file_content(file_path:str) -> str:
         if not path.is_file():
             return f"[异常]：文件{file_path}不是一个文件"
         
+        # 禁止读取 .env 文件
+        if path.name == ".env":
+            return "为了保障数据财产安全，禁止读取.env文件"
+        
         if path.stat().st_size > MAX_FILE_SIZE:
             return f"[异常]：文件{file_path}过大，暂不支持读取"
     

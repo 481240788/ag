@@ -63,8 +63,8 @@ class Agent:
                 messages=messages,
                 tools=llm_tools
             )
-            # print(response)
-            # print("="*50)
+            print(response)
+            print("="*50)
             while(response.tool_calls):
                 current_run_times += 1
                 print(f"第{current_run_times}次迭代")
@@ -123,8 +123,8 @@ class Agent:
                     tools=llm_tools
                 )
 
-                # print(response)
-                # print("="*50)
+                print(response)
+                print("="*50)
             if is_error:
                 return '超出最大迭代次数，已终止任务'
             
