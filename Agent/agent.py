@@ -25,7 +25,7 @@ class Agent:
         self.mcpmanager = MCPManager()
 
 
-    async def run(self,question:str,max_runtimes=5):
+    async def run(self,question:str,max_runtimes=10):
         """
         执行(主程序)
         """

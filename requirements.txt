@@ -1,3 +1,21 @@
-mcp==1.29.0
+# LLM 客户端
 openai==2.44.0
+
+# 环境变量管理
 python-dotenv==1.2.2
+
+# Google 搜索 (SerpApi)
+google-search-results==2.4.2
+
+# HTTP 请求 (天气查询)
+requests==2.34.2
+
+# MCP 协议
+mcp==1.29.0
+
+# Web 框架 & 服务器
+fastapi==0.139.0
+uvicorn==0.51.0
+
+# 数据验证
+pydantic==2.13.4
