@@ -1,12 +1,7 @@
 from mcp.server.fastmcp import FastMCP
-from LLMTools import (
-    #outside_tools
-    search_information,weather_query,
-    #sys_tools
-    get_current_time,read_file_content,list_directory,write_new_file,
-    #code_tools
-    execute_python
-)
+from LLMTools.outside_tools import search_information, weather_query
+from LLMTools.sys_tools import get_current_time, read_file_content, list_directory, write_new_file
+from LLMTools.code_tools import execute_python
 
 mcp = FastMCP("Doraemon")
 

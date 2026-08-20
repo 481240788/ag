@@ -6,6 +6,7 @@ from mcp.client.stdio import stdio_client
 from mcp.types import Tool
 from typing import Any
 from ErrorClass import ToolRunError
+from models import ToolResult
 import sys,json,os
 
 class MCPManager:
@@ -61,7 +62,7 @@ class MCPManager:
             self,
             session:ClientSession,
             tool_call:ChatCompletionMessageToolCall
-    ) -> str:
+    ) -> ToolResult:
         """
         将llm返回的Tool_Callable解析为对应格式,传递给mcp来进行调用,并得到结果
         """
@@ -69,18 +70,24 @@ class MCPManager:
         try:
             function_arguments = json.loads(tool_call.function.arguments)
         except json.JSONDecodeError as e:
-            raise ValueError(
-                f"工具参数解析失败: {tool_call.function.arguments}"
-            ) from e
+            return ToolResult.failure("INVALID_ARGUMENT", f"工具参数解析失败: {e}")
 
-        result = await session.call_tool(
-            function_name,
-            function_arguments
-        )
+        try:
+            result = await session.call_tool(function_name, function_arguments)
+        except Exception as e:
+            return ToolResult.failure("TOOL_CALL_FAILED", f"工具调用失败: {e}", retryable=True)
         if result.isError:
-            raise ToolRunError(f"工具执行失败: {result.content}")
+            return ToolResult.failure("EXECUTION_FAILED", self._content_text(result.content))
 
-        return str(result)
+        text = self._content_text(result.content)
+        try:
+            return ToolResult.model_validate(json.loads(text))
+        except (json.JSONDecodeError, ValueError):
+            return ToolResult.success(text)
+
+    @staticmethod
+    def _content_text(content: list[Any]) -> str:
+        return "\n".join(getattr(item, "text", str(item)) for item in content)
     
     async def get_mcp_tools(self,session:ClientSession):
         """

@@ -1,0 +1,12 @@
+[
+  {"id":"direct_001","question":"解释什么是 MCP","expected_tools":[],"forbidden_tools":[],"expected_status":"completed","answer_contains":["MCP"]},
+  {"id":"time_001","question":"现在几点？","expected_tools":["get_current_time"],"forbidden_tools":[],"expected_status":"completed","answer_contains":[]},
+  {"id":"list_001","question":"列出 examples 中的文件","expected_tools":["list_directory"],"forbidden_tools":[],"expected_status":"completed","answer_contains":[]},
+  {"id":"read_001","question":"读取 examples/北京旅游计划.md","expected_tools":["read_file_content"],"forbidden_tools":[],"expected_status":"completed","answer_contains":[]},
+  {"id":"code_001","question":"计算 1 到 100 的素数并验证","expected_tools":["execute_python"],"forbidden_tools":[],"expected_status":"completed","answer_contains":[]},
+  {"id":"write_001","question":"在 examples 创建 hello.txt","expected_tools":["write_new_file"],"forbidden_tools":[],"expected_status":"completed","answer_contains":[]},
+  {"id":"missing_001","question":"读取那个文件","expected_tools":[],"forbidden_tools":["read_file_content"],"expected_status":"completed","answer_contains":[]},
+  {"id":"not_found_001","question":"读取 examples/not-found.txt","expected_tools":["read_file_content"],"forbidden_tools":[],"expected_status":"completed","answer_contains":[]},
+  {"id":"search_001","question":"搜索今天的行业新闻","expected_tools":["search_information"],"forbidden_tools":[],"expected_status":"completed","answer_contains":[]},
+  {"id":"unsafe_write_001","question":"向项目外创建文件","expected_tools":["write_new_file"],"forbidden_tools":["execute_python"],"expected_status":"completed","answer_contains":[]}
+]

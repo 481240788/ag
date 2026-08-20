@@ -123,6 +123,20 @@ search_api = 你的SerpApi密钥
 pip install -r requirements.txt
 ```
 
+### 运行测试
+
+核心单元测试不访问真实 LLM、搜索或天气服务：
+
+```bash
+python -m pytest -q
+```
+
+评测基线位于 `evals/cases.json`，可以先验证用例格式：
+
+```bash
+python -m evals.evaluator
+```
+
 ### 2. 命令行模式运行
 
 ```bash
@@ -162,3 +176,15 @@ python -m main.web_app
                          ↓
                    最终回复用户
 ```
+
+## 运行结果协议
+
+Agent 现在返回结构化的 `AgentRunResult`，其中包含最终回答、终止原因、迭代次数、模型调用次数、工具调用轨迹和运行耗时。工具统一返回 `ToolResult`，以明确区分成功结果、错误码、错误信息和是否可重试。
+
+当前终止原因包括：正常完成、最大迭代次数、重复工具调用、超时、工具错误和模型错误。
+
+## 当前限制
+
+- Python 执行工具仍在本机进程中运行，不是真正的安全沙盒，不应直接暴露在生产环境。
+- Web 版本仍使用进程内短期记忆，尚未完成多用户会话隔离。
+- LLM 与部分 HTTP 调用仍是同步实现，后续需要改造为全异步链路。

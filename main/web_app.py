@@ -32,7 +32,8 @@ async def chat(request: ChatRequest):
 
         return {
             "success": True,
-            "answer": result
+            "answer": result.answer,
+            "stop_reason": result.stop_reason.value
         }
 
     except Exception as e:

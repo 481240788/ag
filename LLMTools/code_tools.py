@@ -1,7 +1,8 @@
 import subprocess,os,sys,tempfile
+from models import ToolResult
 
 
-def execute_python(code: str, timeout: int = 10) -> str:
+def execute_python(code: str, timeout: int = 10) -> ToolResult:
     """
     执行 Python 代码并返回执行结果。
     input:
@@ -29,14 +30,17 @@ def execute_python(code: str, timeout: int = 10) -> str:
             timeout=timeout
         )
 
-        return (
-            f"return_code: {result.returncode}\n"
-            f"stdout:\n{result.stdout}\n"
-            f"stderr:\n{result.stderr}"
-        )
+        data = {
+            "return_code": result.returncode,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+        }
+        if result.returncode == 0:
+            return ToolResult.success(data)
+        return ToolResult.failure("EXECUTION_FAILED", result.stderr or "Python 执行失败")
 
     except subprocess.TimeoutExpired:
-        return f"执行超时：超过 {timeout} 秒"
+        return ToolResult.failure("TOOL_TIMEOUT", f"执行超时：超过 {timeout} 秒", retryable=False)
 
     finally:
         os.remove(file_path)

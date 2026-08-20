@@ -1,19 +1,17 @@
 from serpapi import SerpApiClient
-from dotenv import load_dotenv
-from ErrorClass import SearchError,ApiError
-import os,requests
-
-load_dotenv()
+from config import get_settings
+from models import ToolResult
+import requests
 
 
 
-def search_information(query:str) -> str:
+def search_information(query:str) -> ToolResult:
     """
     在线搜索工具
     """
-    search_api = os.getenv('search_api')
-    if search_api is None:
-        raise ApiError(f'未配置api')
+    search_api = get_settings().search_api_key
+    if not search_api:
+        return ToolResult.failure("CONFIG_MISSING", "未配置搜索 API")
     
     params = {
         'engine':'google',
@@ -29,11 +27,11 @@ def search_information(query:str) -> str:
 
      # 智能解析:优先寻找最直接的答案
         if "answer_box_list" in response:
-            return '\n'.join(response["answer_box_list"])
+            return ToolResult.success(response["answer_box_list"])
         if "answer_box" in response and "answer" in response["answer_box"]:
-            return '\n'.join(response["answer_box"]['answer'])
+            return ToolResult.success(response["answer_box"]['answer'])
         if "knowledge_graph" in response and "description" in response["knowledge_graph"]:
-            return response["knowledge_graph"]["description"]
+            return ToolResult.success(response["knowledge_graph"]["description"])
 
         if "organic_results" in response and response["organic_results"]:
              # 如果没有直接答案，则返回前三个有机结果的摘要
@@ -41,13 +39,13 @@ def search_information(query:str) -> str:
                 f"[{i+1}] {res.get('title', '')}\n{res.get('snippet', '')}"
                 for i, res in enumerate(response["organic_results"][:3])
             ]
-            return "\n\n".join(snippets)
-        return f"对不起，没有找到关于 '{query}' 的信息。"
+            return ToolResult.success("\n\n".join(snippets))
+        return ToolResult.success(f"没有找到关于 '{query}' 的信息。")
     
     except Exception as e:
-        raise SearchError(f"搜索时发生错误：{e}") from e
+        return ToolResult.failure("EXTERNAL_SERVICE_ERROR", f"搜索时发生错误：{e}", retryable=True)
     
-def weather_query(city:str) -> str:
+def weather_query(city:str) -> ToolResult:
     """
     天气查询工具
     input: city(城市名)
@@ -58,7 +56,7 @@ def weather_query(city:str) -> str:
 
     try:
         #发送get请求
-        response = requests.get(url)   
+        response = requests.get(url, timeout=get_settings().tool_timeout_seconds)
         #判断请求返回状态码是否正常，正常不管，不正常raise出HTTPError
         response.raise_for_status() 
         #将返回的消息requests.text转为json格式
@@ -70,10 +68,10 @@ def weather_query(city:str) -> str:
         weather_desc = current_condition['weatherDesc'][0]["value"]
         temp_c = current_condition['temp_C']
 
-        return f'{city}当前天气:{weather_desc},气温:{temp_c}℃'
+        return ToolResult.success({"city": city, "description": weather_desc, "temperature_c": temp_c})
     
     except requests.exceptions.RequestException as e:
-        raise SearchError(f"查询遇到网络问题:{e}") from e
+        return ToolResult.failure("EXTERNAL_SERVICE_ERROR", f"查询遇到网络问题:{e}", retryable=True)
     
     except (KeyError,IndexError) as e:
-        raise SearchError(f"解析天气数据错误，可能是城市名无效:{e}") from e
+        return ToolResult.failure("INVALID_RESPONSE", f"解析天气数据错误，可能是城市名无效:{e}")
