@@ -22,12 +22,14 @@ class Agent:
         self.mcpmanager = MCPManager()
 
 
-    async def run(self,question:str,max_runtimes=3):
+    async def run(self,question:str,max_runtimes=5):
         """
         执行(主程序)
         """
         #当前循环次数
         current_run_times = 0
+        #超出循环次数状态码
+        is_error = False
         #组装格式化提示词
         llm_user_prompt = user_prompt.format(question=question)
         #组装messages
@@ -58,6 +60,7 @@ class Agent:
                 current_run_times += 1
                 print(f"第{current_run_times}次迭代")
                 if current_run_times > max_runtimes:
+                    is_error = True
                     break
                 
                 #保存每一次的assistant信息
@@ -112,7 +115,8 @@ class Agent:
                 )
                 print(response)
                 print("="*50)
-            
+            if is_error:
+                return '超出最大迭代次数，已终止任务'
             return response.content
 
                 
