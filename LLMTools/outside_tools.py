@@ -1,11 +1,11 @@
 from serpapi import SerpApiClient
 from config import get_settings
 from models import ToolResult
-import requests
+import asyncio,httpx
 
 
 
-def search_information(query:str) -> ToolResult:
+async def search_information(query:str) -> ToolResult:
     """
     在线搜索工具
     """
@@ -23,7 +23,7 @@ def search_information(query:str) -> ToolResult:
 
     try:
         client = SerpApiClient(params_dict=params)
-        response = client.get_dict()
+        response = await asyncio.to_thread(client.get_dict)
 
      # 智能解析:优先寻找最直接的答案
         if "answer_box_list" in response:
@@ -45,18 +45,20 @@ def search_information(query:str) -> ToolResult:
     except Exception as e:
         return ToolResult.failure("EXTERNAL_SERVICE_ERROR", f"搜索时发生错误：{e}", retryable=True)
     
-def weather_query(city:str) -> ToolResult:
+async def weather_query(city:str) -> ToolResult:
     """
     天气查询工具
     input: city(城市名)
     output: str(城市、天气、温度)
     """
     #组装请求头
-    url = f'https://wttr.in/{city}?format=j1'
+    url = 'https://wttr.in'
 
     try:
         #发送get请求
-        response = requests.get(url, timeout=get_settings().tool_timeout_seconds)
+        timeout = httpx.Timeout(get_settings().tool_timeout_seconds)
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.get(f"{url}/{city}", params={"format": "j1", "lang": "zh"})
         #判断请求返回状态码是否正常，正常不管，不正常raise出HTTPError
         response.raise_for_status() 
         #将返回的消息requests.text转为json格式
@@ -70,7 +72,7 @@ def weather_query(city:str) -> ToolResult:
 
         return ToolResult.success({"city": city, "description": weather_desc, "temperature_c": temp_c})
     
-    except requests.exceptions.RequestException as e:
+    except httpx.HTTPError as e:
         return ToolResult.failure("EXTERNAL_SERVICE_ERROR", f"查询遇到网络问题:{e}", retryable=True)
     
     except (KeyError,IndexError) as e:

@@ -82,8 +82,13 @@ class Agent:
                     )
                     while True:
                         try:
-                            response = self.llm_client.think(messages=messages, tools=tools)
+                            response = await asyncio.wait_for(
+                                self.llm_client.think(messages=messages, tools=tools),
+                                timeout=self.settings.llm_timeout_seconds,
+                            )
                             model_calls += 1
+                        except TimeoutError:
+                            raise
                         except Exception:
                             logger.exception("模型调用失败 session_id=%s", session_id)
                             return self._result(started, "模型调用失败，请检查模型配置或稍后重试。", StopReason.MODEL_ERROR,
@@ -114,7 +119,10 @@ class Agent:
                                                     model_calls, records)
 
                             tool_started = time.perf_counter()
-                            result = await self.mcpmanager.parse_llm_response(session, call)
+                            result = await asyncio.wait_for(
+                                self.mcpmanager.parse_llm_response(session, call),
+                                timeout=self.settings.tool_timeout_seconds,
+                            )
                             if not isinstance(result, ToolResult):
                                 result = ToolResult.model_validate(result)
                             try:

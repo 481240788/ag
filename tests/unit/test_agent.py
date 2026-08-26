@@ -22,7 +22,7 @@ class FakeLLM:
         self.responses = iter(responses)
         self.received_messages = []
 
-    def think(self, messages, **_):
+    async def think(self, messages, **_):
         self.received_messages.append(messages)
         return next(self.responses)
 
@@ -94,7 +94,7 @@ def test_agent_isolates_session_history():
 
 def test_agent_failure_does_not_save_history():
     class BrokenLLM:
-        def think(self, **_):
+        async def think(self, **_):
             raise RuntimeError("model unavailable")
 
     agent = make_agent([])
@@ -104,3 +104,36 @@ def test_agent_failure_does_not_save_history():
     assert result.stop_reason == StopReason.MODEL_ERROR
     assert result.answer
     assert history == []
+
+
+def test_agent_model_timeout_has_explicit_stop_reason():
+    class SlowLLM:
+        async def think(self, **_):
+            await asyncio.sleep(0.05)
+
+    settings = Settings(
+        model_name="test", llm_base_url="https://example.invalid", llm_api_key="key",
+        llm_timeout_seconds=0.01, agent_timeout_seconds=1,
+    )
+    agent = Agent(settings=settings, llm_client=SlowLLM(), mcp_manager=FakeMCP())
+    result = asyncio.run(agent.run("慢请求", session_id="timeout"))
+    assert result.stop_reason == StopReason.TIMEOUT
+
+
+def test_agent_tool_timeout_has_explicit_stop_reason():
+    class SlowMCP(FakeMCP):
+        async def parse_llm_response(self, _, __):
+            await asyncio.sleep(0.05)
+            return ToolResult.success()
+
+    settings = Settings(
+        model_name="test", llm_base_url="https://example.invalid", llm_api_key="key",
+        tool_timeout_seconds=0.01, agent_timeout_seconds=1,
+    )
+    agent = Agent(
+        settings=settings,
+        llm_client=FakeLLM([response(calls=[tool_call()])]),
+        mcp_manager=SlowMCP(),
+    )
+    result = asyncio.run(agent.run("慢工具", session_id="timeout"))
+    assert result.stop_reason == StopReason.TIMEOUT

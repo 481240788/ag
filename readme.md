@@ -58,11 +58,11 @@
   - `weather_query`：查询指定城市的实时天气
 - **sys_tools.py** — 系统工具
   - `get_current_time`：获取当前系统时间
-  - `read_file_content`：读取指定路径的文件内容（限制 5MB）
-  - `list_directory`：列出指定目录下的所有文件和子目录
+  - `read_file_content`：读取 `examples` 工作目录内的文件内容（限制 5MB）
+  - `list_directory`：列出 `examples` 工作目录中的文件和子目录
   - `write_new_file`：在 examples 目录中创建新文件（安全限制：不可覆盖、不可写入系统盘）
 - **code_tools.py** — 代码工具
-  - `execute_python`：在沙盒环境中执行 Python 代码，支持超时控制
+  - `execute_local_python_unsafe`：仅供可信本地开发使用的宿主机代码执行工具，默认关闭
 
 ### MCP_server
 
@@ -101,13 +101,20 @@
 
 ```env
 # 模型相关
-model_name = "qwen3.7-max"
-base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-api = 你的API密钥
+MODEL_NAME="qwen3.7-max"
+LLM_BASE_URL="https://dashscope.aliyuncs.com/compatible-mode/v1"
+LLM_API_KEY=你的API密钥
 
 # 工具相关
 # Google 搜索 API（SerpApi）
-search_api = 你的SerpApi密钥
+SEARCH_API_KEY=你的SerpApi密钥
+
+# 运行边界
+LLM_TIMEOUT_SECONDS=60
+TOOL_TIMEOUT_SECONDS=15
+AGENT_TIMEOUT_SECONDS=120
+ENABLE_LOCAL_PYTHON_EXECUTION=false
+APP_ENVIRONMENT=development
 ```
 
 **API 获取地址：**
@@ -155,11 +162,11 @@ python -m main.web_app
 
 1. **在线信息搜索** — 通过 Google 搜索获取实时信息
 2. **天气查询** — 查询指定城市的当日天气
-3. **文件内容读取** — 读取本机指定路径的文件内容
+3. **文件内容读取** — 读取项目 `examples` 目录内的文件内容
 4. **目录文件列表** — 查询指定文件夹下的所有文件
 5. **获取当前时间** — 获取本机当前时间
 6. **创建文件** — 在 examples 目录中创建新文件（有安全限制）
-7. **Python 代码执行** — 编写、调试并执行 Python 代码
+7. **Python 代码执行（默认关闭）** — 仅在非生产环境显式开启后可用，不属于安全沙盒
 
 ## 工作流程
 
@@ -185,6 +192,14 @@ Agent 现在返回结构化的 `AgentRunResult`，其中包含最终回答、终
 
 ## 当前限制
 
-- Python 执行工具仍在本机进程中运行，不是真正的安全沙盒，不应直接暴露在生产环境。
 - Web 版本已完成进程内多用户会话隔离；服务重启后历史仍会丢失，生产环境可通过 `ConversationStore` 接入 Redis。
-- LLM 与部分 HTTP 调用仍是同步实现，后续需要改造为全异步链路。
+- LLM、天气和工具调用链路均为异步实现；同步 SerpApi SDK 通过工作线程隔离。
+- 文件工具默认只允许访问 `examples`，并拒绝路径穿越、敏感文件、符号链接绕过和覆盖写入。
+- Python 执行仍然不是安全沙盒，因此默认不注册；即使显式开启，生产环境也会强制禁用。
+- Web API 为每个请求生成 `request_id`，并使用 4xx/5xx 状态码区分校验、超时、模型和工具错误。
+
+## Web API
+
+`POST /chat` 请求需要 UUID 格式的 `session_id` 和非空 `message`。响应包含 `request_id`、`session_id`、`stop_reason` 和运行耗时；所有响应还会设置 `X-Request-ID` 响应头。
+
+`DELETE /sessions/{session_id}` 可清除指定会话的进程内历史。

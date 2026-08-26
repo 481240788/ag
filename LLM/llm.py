@@ -1,4 +1,4 @@
-from openai import OpenAI
+from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletionMessage
 from typing import Optional,Any
 from config import Settings, get_settings
@@ -21,12 +21,13 @@ class LLM_client:
         if not all([llm_base_url,llm_api_key]):
             raise LLMConfigMiss("[LLM] llm配置缺失,请确保相关信息配置完整")
         
-        self.llm_client = OpenAI(
+        self.llm_client = AsyncOpenAI(
             base_url=llm_base_url,
-            api_key=llm_api_key
+            api_key=llm_api_key,
+            timeout=self.settings.llm_timeout_seconds,
         )
 
-    def think(
+    async def think(
         self,
         messages:list[dict[str,Any]],
         tools:Optional[list[dict[str,Any]]]=None,
@@ -41,7 +42,7 @@ class LLM_client:
             raise LLMConfigMiss("[LLM] llm配置缺失,请确保相关信息配置完整")
 
         #拿到llm返回结果
-        llm_response = self.llm_client.chat.completions.create(
+        llm_response = await self.llm_client.chat.completions.create(
             model=llm_model_name,
             messages=messages,
             tools=tools

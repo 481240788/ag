@@ -8,7 +8,7 @@ python-dotenv==1.2.2
 google-search-results==2.4.2
 
 # HTTP 请求 (天气查询)
-requests==2.34.2
+httpx>=0.27,<1.0
 
 # MCP 协议
 mcp==1.29.0

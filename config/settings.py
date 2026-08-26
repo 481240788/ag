@@ -20,7 +20,13 @@ class Settings(BaseModel):
     agent_timeout_seconds: float = Field(default=120, gt=0)
     #tools调用允许的最大运行时间
     tool_timeout_seconds: float = Field(default=15, gt=0)
+    #llm model允许最大思考时间
+    llm_timeout_seconds: float = Field(default=60, gt=0)
+    #历史消息允许记录的最大长度(token)
     history_max_tokens: int = Field(default=4_000, ge=100)
+    enable_local_python_execution: bool = False
+    python_max_output_chars: int = Field(default=20_000, ge=1_000)
+    app_environment: str = "development"
     #多余字段不报错
     model_config = ConfigDict(extra="ignore")
 
@@ -46,7 +52,13 @@ class Settings(BaseModel):
             max_agent_iterations=value("MAX_AGENT_ITERATIONS", default=10),
             agent_timeout_seconds=value("AGENT_TIMEOUT_SECONDS", default=120),
             tool_timeout_seconds=value("TOOL_TIMEOUT_SECONDS", default=15),
+            llm_timeout_seconds=value("LLM_TIMEOUT_SECONDS", default=60),
             history_max_tokens=value("HISTORY_MAX_TOKENS", default=4_000),
+            enable_local_python_execution=value(
+                "ENABLE_LOCAL_PYTHON_EXECUTION", default=False
+            ),
+            python_max_output_chars=value("PYTHON_MAX_OUTPUT_CHARS", default=20_000),
+            app_environment=value("APP_ENVIRONMENT", default="development"),
         )
 
 
