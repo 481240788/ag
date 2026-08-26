@@ -145,3 +145,99 @@ class Agent:
             model_calls=model_calls, tool_calls=records,
             duration_ms=(time.perf_counter() - started) * 1000,
         )
+<<<<<<< HEAD
+=======
+
+        async with self.mcpmanager.connect_to_mcp() as session:
+            #当前可用的工具列表
+            canuse_tool_list = await self.mcpmanager.get_mcp_tools(session)
+
+            #格式转换(拿到符合openai格式的llm需要的工具格式)
+            llm_tools = self.mcpmanager.mcp_to_llm(canuse_tool_list)
+
+            #调用llm
+            response = self.llm_client.think(
+                messages=messages,
+                tools=llm_tools
+            )
+            print(response)
+            print("="*50)
+            while(response.tool_calls):
+                current_run_times += 1
+                print(f"第{current_run_times}次迭代")
+                if current_run_times > max_runtimes:
+                    is_error = True
+                    break
+                
+                #保存每一次的assistant信息
+                messages.append(
+                    {
+                        "role":"assistant",
+                        "content":response.content,
+                        "tool_calls":[
+                            {
+                                "id":tool_call.id,
+                                "type":"function",
+                                "function":{
+                                    "name":tool_call.function.name,
+                                    "arguments":tool_call.function.arguments
+                                }
+                            }
+                            for tool_call in response.tool_calls
+                        ]
+                    }
+                )
+
+                #根据llm返回结果，调用工具获取结果
+                for tool_call in response.tool_calls:
+                    print(
+                        f"\n[Tool Call] "
+                        f"{tool_call.function.name}"
+                    )
+
+                    print(
+                        f"[Arguments] "
+                        f"{tool_call.function.arguments}"
+                    )
+                    result = await self.mcpmanager.parse_llm_response(
+                        session,
+                        tool_call
+                    )
+                    print(f"[Tool Result] {result}")
+                    print("-" * 50)
+
+                    #工具结果传入messages
+                    messages.append(
+                        {
+                            "role":"tool",
+                            "tool_call_id":tool_call.id,
+                            "content":result
+                        }
+                    )
+
+                response = self.llm_client.think(
+                    messages=messages,
+                    tools=llm_tools
+                )
+
+                print(response)
+                print("="*50)
+            if is_error:
+                return '超出最大迭代次数，已终止任务'
+            
+            # #短暂保存历史对话内容
+            self.temp_memory.append(
+                {
+                    "role":"user","content":question
+                }
+            )
+            self.temp_memory.append(
+                {
+                    "role":"assistant","content":response.content
+                }
+            )
+            return response.content
+
+                
+    
+>>>>>>> b7350c2f3fb2c5b7508d452f7350d54b8d568c16
