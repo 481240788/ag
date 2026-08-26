@@ -1,9 +1,14 @@
 from Agent import Agent
 
 async def main():
+    from uuid import uuid4
+
     agent = Agent()
 
-    result = await agent.run("做一个python代码,返回1-100内的所有素数，调试好了写一个py文件出来")
+    result = await agent.run(
+        "做一个python代码,返回1-100内的所有素数，调试好了写一个py文件出来",
+        session_id=str(uuid4()),
+    )
 
     print(result.answer)
     print(f"终止原因: {result.stop_reason.value}")

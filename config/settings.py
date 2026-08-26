@@ -20,6 +20,7 @@ class Settings(BaseModel):
     agent_timeout_seconds: float = Field(default=120, gt=0)
     #tools调用允许的最大运行时间
     tool_timeout_seconds: float = Field(default=15, gt=0)
+    history_max_tokens: int = Field(default=4_000, ge=100)
     #多余字段不报错
     model_config = ConfigDict(extra="ignore")
 
@@ -45,6 +46,7 @@ class Settings(BaseModel):
             max_agent_iterations=value("MAX_AGENT_ITERATIONS", default=10),
             agent_timeout_seconds=value("AGENT_TIMEOUT_SECONDS", default=120),
             tool_timeout_seconds=value("TOOL_TIMEOUT_SECONDS", default=15),
+            history_max_tokens=value("HISTORY_MAX_TOKENS", default=4_000),
         )
 
 

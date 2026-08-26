@@ -211,6 +211,12 @@
     const messageInput = document.getElementById("messageInput");
     const sendButton = document.getElementById("sendButton");
 
+    let sessionId = localStorage.getItem("agent_session_id");
+    if (!sessionId) {
+        sessionId = crypto.randomUUID();
+        localStorage.setItem("agent_session_id", sessionId);
+    }
+
 
     // 添加消息
     function addMessage(content, role) {
@@ -280,6 +286,7 @@
                 },
 
                 body: JSON.stringify({
+                    session_id: sessionId,
                     message: message
                 })
 
