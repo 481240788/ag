@@ -1,10 +1,12 @@
-import asyncio,json,time
+import asyncio,json,logging,time
 from collections import Counter
 from typing import Any, Optional
 from config import Settings, get_settings
 from memory import ConversationStore, InMemoryConversationStore
 from models import AgentRunResult, StopReason, ToolCallRecord, ToolResult
 from Prompt import sys_prompt, user_prompt
+
+logger = logging.getLogger(__name__)
 
 
 class Agent:
@@ -83,7 +85,8 @@ class Agent:
                             response = self.llm_client.think(messages=messages, tools=tools)
                             model_calls += 1
                         except Exception:
-                            return self._result(started, None, StopReason.MODEL_ERROR,
+                            logger.exception("模型调用失败 session_id=%s", session_id)
+                            return self._result(started, "模型调用失败，请检查模型配置或稍后重试。", StopReason.MODEL_ERROR,
                                                 iterations, model_calls, records)
 
                         if not response.tool_calls:
@@ -130,6 +133,7 @@ class Agent:
             return self._result(started, "任务执行超时", StopReason.TIMEOUT,
                                 iterations, model_calls, records)
         except Exception:
+            logger.exception("工具服务执行失败 session_id=%s", session_id)
             return self._result(started, "工具服务执行失败", StopReason.TOOL_ERROR,
                                 iterations, model_calls, records)
 

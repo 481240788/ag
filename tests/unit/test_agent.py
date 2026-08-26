@@ -102,4 +102,5 @@ def test_agent_failure_does_not_save_history():
     result = asyncio.run(agent.run("不会保存", session_id="failed"))
     history = asyncio.run(agent.conversation_store.get_messages("failed"))
     assert result.stop_reason == StopReason.MODEL_ERROR
+    assert result.answer
     assert history == []

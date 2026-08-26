@@ -303,14 +303,14 @@
             if (data.success) {
 
                 addMessage(
-                    data.answer,
+                    data.answer || "任务未能生成有效回复，请稍后重试。",
                     "model"
                 );
 
             } else {
 
                 addMessage(
-                    data.answer,
+                    data.answer || "请求执行失败，请稍后重试。",
                     "model"
                 );
 

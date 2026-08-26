@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 from uuid import UUID
 from path_manager import PathManager
 from Agent import Agent
+from models import StopReason
 
 app = FastAPI(title="MCP Agent Chat")
 path_man = PathManager()
@@ -32,9 +33,10 @@ async def chat(request: ChatRequest):
     try:
         result = await agent.run(request.message, session_id=str(request.session_id))
 
+        succeeded = result.stop_reason == StopReason.COMPLETED
         return {
-            "success": True,
-            "answer": result.answer,
+            "success": succeeded,
+            "answer": result.answer or "任务未能生成有效回复，请稍后重试。",
             "stop_reason": result.stop_reason.value,
             "session_id": str(request.session_id),
         }
