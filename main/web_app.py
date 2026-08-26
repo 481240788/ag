@@ -1,18 +1,22 @@
 import logging
+import asyncio
+import json
 from contextlib import asynccontextmanager
 from typing import Any
 from uuid import UUID, uuid4
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from Agent import Agent
 from ErrorClass import AppError
 from models import StopReason
+from observability import bind_context, configure_logging, reset_context
 from path_manager import PathManager
+from main.task_registry import TaskRegistry
 
 logger = logging.getLogger(__name__)
 path_man = PathManager()
@@ -54,19 +58,35 @@ def create_app(agent_instance: Any | None = None) -> FastAPI:
     async def lifespan(application: FastAPI):
         if application.state.agent is None:
             application.state.agent = Agent()
-        yield
+        configure_logging(
+            getattr(getattr(application.state.agent, "settings", None), "log_level", "INFO")
+        )
+        manager = getattr(application.state.agent, "mcpmanager", None)
+        if manager is not None and hasattr(manager, "start"):
+            await manager.start()
+        try:
+            yield
+        finally:
+            await application.state.tasks.close()
+            if manager is not None and hasattr(manager, "stop"):
+                await manager.stop()
 
     application = FastAPI(title="Chat", lifespan=lifespan)
     application.state.agent = agent_instance
+    application.state.tasks = TaskRegistry()
     static_path = str(path_man.abs_path / "main" / "static")
     application.mount("/static", StaticFiles(directory=static_path), name="static")
 
     @application.middleware("http")
     async def request_context(request: Request, call_next):
         request.state.request_id = uuid4()
-        response = await call_next(request)
-        response.headers["X-Request-ID"] = str(request.state.request_id)
-        return response
+        tokens = bind_context(str(request.state.request_id))
+        try:
+            response = await call_next(request)
+            response.headers["X-Request-ID"] = str(request.state.request_id)
+            return response
+        finally:
+            reset_context(tokens)
 
     @application.exception_handler(AppError)
     async def handle_app_error(request: Request, error: AppError):
@@ -102,9 +122,13 @@ def create_app(agent_instance: Any | None = None) -> FastAPI:
 
     @application.post("/chat", response_model=ChatResponse)
     async def chat(request: Request, payload: ChatRequest):
-        result = await request.app.state.agent.run(
-            payload.message, session_id=str(payload.session_id)
-        )
+        tokens = bind_context(str(request.state.request_id), str(payload.session_id))
+        try:
+            result = await request.app.state.agent.run(
+                payload.message, session_id=str(payload.session_id)
+            )
+        finally:
+            reset_context(tokens)
         succeeded = result.stop_reason == StopReason.COMPLETED
         response = ChatResponse(
             success=succeeded,
@@ -128,6 +152,72 @@ def create_app(agent_instance: Any | None = None) -> FastAPI:
             "cleared": cleared,
             "request_id": str(request.state.request_id),
         }
+
+    @application.post("/tasks", status_code=202)
+    async def create_task(request: Request, payload: ChatRequest):
+        task_id, record = await request.app.state.tasks.create(
+            payload.session_id, request.state.request_id
+        )
+
+        async def publish(event: dict[str, Any]) -> None:
+            await record.queue.put(event)
+
+        async def runner() -> None:
+            tokens = bind_context(str(record.request_id), str(record.session_id))
+            try:
+                await request.app.state.agent.run(
+                    payload.message,
+                    session_id=str(payload.session_id),
+                    event_callback=publish,
+                )
+            except asyncio.CancelledError:
+                await publish({"type": "cancelled", "status": "cancelled"})
+                raise
+            finally:
+                record.finished = True
+                reset_context(tokens)
+
+        record.task = asyncio.create_task(runner(), name=f"agent-{task_id}")
+        return {
+            "task_id": str(task_id),
+            "request_id": str(record.request_id),
+            "session_id": str(record.session_id),
+        }
+
+    @application.get("/tasks/{task_id}/events")
+    async def task_events(request: Request, task_id: UUID):
+        record = await request.app.state.tasks.get(task_id)
+        if record is None:
+            return JSONResponse(status_code=404, content={
+                "success": False, "error_code": "NOT_FOUND",
+                "message": "任务不存在", "request_id": str(request.state.request_id),
+            })
+
+        async def stream():
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    event = await asyncio.wait_for(record.queue.get(), timeout=15)
+                    yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+                    if event.get("type") in {"result", "cancelled"}:
+                        break
+                except TimeoutError:
+                    yield ": keep-alive\n\n"
+                    if record.finished and record.queue.empty():
+                        break
+
+        return StreamingResponse(stream(), media_type="text/event-stream")
+
+    @application.delete("/tasks/{task_id}")
+    async def cancel_task(request: Request, task_id: UUID):
+        cancelled = await request.app.state.tasks.cancel(task_id)
+        if not cancelled:
+            return JSONResponse(status_code=404, content={
+                "success": False, "error_code": "NOT_FOUND",
+                "message": "任务不存在或已结束", "request_id": str(request.state.request_id),
+            })
+        return {"success": True, "task_id": str(task_id), "status": "cancelling"}
 
     return application
 

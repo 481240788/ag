@@ -20,9 +20,16 @@ class FakeAgent:
         self.error = error
         self.conversation_store = FakeStore()
 
-    async def run(self, *_args, **_kwargs):
+    async def run(self, *_args, **kwargs):
         if self.error:
             raise self.error
+        callback = kwargs.get("event_callback")
+        if callback:
+            await callback({"type": "status", "status": "thinking"})
+            await callback({
+                "type": "result", "status": self.result.stop_reason.value,
+                "data": self.result.model_dump(mode="json"),
+            })
         return self.result
 
 
@@ -61,3 +68,15 @@ def test_unknown_error_is_sanitized():
     assert response.status_code == 500
     assert response.json()["message"] == "服务内部错误"
     assert "secret-value" not in response.text
+
+
+def test_task_sse_emits_status_and_result():
+    with TestClient(create_app(FakeAgent(result()))) as client:
+        created = client.post(
+            "/tasks", json={"session_id": str(uuid4()), "message": "你好"}
+        )
+        events = client.get(f"/tasks/{created.json()['task_id']}/events")
+    assert created.status_code == 202
+    assert events.status_code == 200
+    assert '"status": "thinking"' in events.text
+    assert '"type": "result"' in events.text

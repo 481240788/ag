@@ -64,4 +64,5 @@ class AgentRunResult(BaseModel):
     model_calls: int = 0
     tool_calls: list[ToolCallRecord] = Field(default_factory=list)
     duration_ms: float = 0
+    token_usage: dict[str, int] = Field(default_factory=dict)
 

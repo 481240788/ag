@@ -27,6 +27,7 @@ class Settings(BaseModel):
     enable_local_python_execution: bool = False
     python_max_output_chars: int = Field(default=20_000, ge=1_000)
     app_environment: str = "development"
+    log_level: str = "INFO"
     #多余字段不报错
     model_config = ConfigDict(extra="ignore")
 
@@ -59,6 +60,7 @@ class Settings(BaseModel):
             ),
             python_max_output_chars=value("PYTHON_MAX_OUTPUT_CHARS", default=20_000),
             app_environment=value("APP_ENVIRONMENT", default="development"),
+            log_level=value("LOG_LEVEL", default="INFO"),
         )
 
 

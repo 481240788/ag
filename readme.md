@@ -1,205 +1,420 @@
 # Doraemon Agent
 
-基于 MCP（Model Context Protocol）协议的智能 Agent 项目。通过 MCP 协议统一管理工具调用，结合大语言模型实现自动化的任务分析与执行。
+一个基于 MCP（Model Context Protocol）和 OpenAI 兼容模型接口构建的异步工具调用 Agent。
 
-## 项目架构
+项目实现了完整的模型工具调用循环、多会话隔离、MCP 常驻连接、结构化运行结果、安全文件工具、SSE 状态推送、任务取消和简洁的 Web 对话界面。
 
-```
-├── Agent/              # Agent 核心模块
-│   └── agent.py        # 包装 LLM 为 Agent，实现工具调用循环
-├── LLM/                # 大语言模型客户端
-│   └── llm.py          # 基于 OpenAI 兼容接口的 LLM 客户端
-├── LLMTools/           # 工具集
-│   ├── outside_tools.py    # 外部工具（Google 搜索、天气查询）
-│   ├── sys_tools.py        # 系统工具（文件读写、目录列表、时间获取、文件创建）
-│   └── code_tools.py       # 代码工具（Python 代码执行与调试）
-├── MCP_server/         # MCP 服务模块
-│   ├── mcp_server.py       # 将工具注册到 MCP 服务端
-│   └── mcp_manager.py      # MCP 客户端管理（会话管理、格式转换、工具调用）
-├── Prompt/             # 提示词模块
-│   └── prompt.py       # 系统提示词与用户提示词模板
-├── ErrorClass/         # 自定义异常
-│   └── errorclass.py   # LLMConfigMiss、ToolRunError、SearchError、ApiError
-├── path_manager/       # 路径管理
-│   └── pathmanager.py  # 项目根路径管理工具
-├── main/               # 入口模块
-│   ├── main.py         # 命令行运行入口
-│   ├── web_app.py      # FastAPI Web 应用入口
-│   └── static/         # 前端静态文件
-├── examples/           # Agent 创建文件的指定工作目录
-├── .env                # 环境变量配置
-└── .env.example        # 环境变量示例
-```
+## 功能特性
 
-## 各模块说明
+- OpenAI 兼容的异步 LLM 客户端，可配置模型名称和服务地址。
+- 基于 MCP stdio 的统一工具注册与调用。
+- MCP 服务随 Web 应用启动和关闭，工具列表自动缓存。
+- MCP 调用异常时自动重建连接并重试一次。
+- 使用 `session_id` 隔离不同用户的对话历史。
+- 按上下文 token 预算裁剪历史消息。
+- 模型调用、工具调用和整个 Agent 任务均有超时限制。
+- 检测重复工具调用和最大迭代次数，避免无限循环。
+- 工具和 Agent 均返回结构化结果。
+- 文件操作限制在 `examples` 工作目录内。
+- 拒绝路径穿越、敏感文件、符号链接绕过和覆盖写入。
+- 本机 Python 执行工具默认关闭，生产环境强制禁用。
+- Web 支持 SSE 状态推送和任务取消。
+- JSON 结构化日志自动关联请求与会话，并对常见密钥字段脱敏。
 
-### Agent
+## 系统架构
 
-**agent.py** — Agent 核心类，负责：
-
-- 初始化 LLM 客户端与 MCP 管理器
-- 实现 ReAct 循环：调用 LLM → 解析工具调用 → 执行工具 → 将结果反馈给 LLM
-- 通过 `session_id` 隔离短期对话记忆，并按上下文 token 预算裁剪
-- 支持最大迭代次数限制，防止无限循环
-
-### LLM
-
-**llm.py** — LLM 客户端，基于 OpenAI 兼容接口：
-
-- 支持自定义 `base_url` 和 `api_key`，兼容多种大模型服务
-- `think()` 方法：接收 messages 和可选的 tools 列表，返回 LLM 回复
-
-### LLMTools
-
-工具集，分为三类：
-
-- **outside_tools.py** — 外部 API 工具
-  - `search_information`：通过 Google 搜索获取在线信息（基于 SerpApi）
-  - `weather_query`：查询指定城市的实时天气
-- **sys_tools.py** — 系统工具
-  - `get_current_time`：获取当前系统时间
-  - `read_file_content`：读取 `examples` 工作目录内的文件内容（限制 5MB）
-  - `list_directory`：列出 `examples` 工作目录中的文件和子目录
-  - `write_new_file`：在 examples 目录中创建新文件（安全限制：不可覆盖、不可写入系统盘）
-- **code_tools.py** — 代码工具
-  - `execute_local_python_unsafe`：仅供可信本地开发使用的宿主机代码执行工具，默认关闭
-
-### MCP_server
-
-**mcp_server.py** — MCP 服务端，将所有工具注册到 MCP 框架中（项目代号：Doraemon）
-
-**mcp_manager.py** — MCP 管理器，负责：
-
-- 启动 MCP 服务并建立 stdio 通信会话
-- 获取 MCP 中的可用工具列表
-- 将 MCP 工具格式转换为 OpenAI 兼容的 function calling 格式
-- 将 LLM 返回的 tool_call 解析为 MCP 可调用格式，并返回执行结果
-
-### Prompt
-
-**prompt.py** — 提示词定义：
-
-- `sys_prompt`：系统提示词，定义 Agent 的行为准则（工具调用规则、文件安全规则、回答规则等）
-- `user_prompt`：用户提示词模板，接收用户问题
-
-### ErrorClass
-
-**errorclass.py** — 自定义异常类型：
-
-- `LLMConfigMiss`：LLM 配置缺失
-- `ToolRunError`：工具执行失败
-- `SearchError`：搜索/查询出错
-- `ApiError`：API 未配置
-
-### path_manager
-
-**pathmanager.py** — 路径管理工具，提供项目根目录的绝对路径
-
-## 环境配置
-
-在项目根目录创建 `.env` 文件，参考 `.env.example` 填写：
-
-```env
-# 模型相关
-MODEL_NAME="qwen3.7-max"
-LLM_BASE_URL="https://dashscope.aliyuncs.com/compatible-mode/v1"
-LLM_API_KEY=你的API密钥
-
-# 工具相关
-# Google 搜索 API（SerpApi）
-SEARCH_API_KEY=你的SerpApi密钥
-
-# 运行边界
-LLM_TIMEOUT_SECONDS=60
-TOOL_TIMEOUT_SECONDS=15
-AGENT_TIMEOUT_SECONDS=120
-ENABLE_LOCAL_PYTHON_EXECUTION=false
-APP_ENVIRONMENT=development
+```text
+┌───────────────┐
+│    Web UI     │
+│ HTML/CSS/JS   │
+└───────┬───────┘
+        │ HTTP / SSE
+┌───────▼───────┐
+│    FastAPI    │
+│ Session/Task  │
+└───────┬───────┘
+        │
+┌───────▼───────┐      ┌──────────────────┐
+│ Agent Runtime │─────▶│ Async LLM Client │
+│ ReAct Loop    │      │ OpenAI Compatible│
+└───────┬───────┘      └──────────────────┘
+        │
+┌───────▼───────┐      ┌──────────────────┐
+│  MCP Manager  │─────▶│ MCP Tool Server  │
+│ Persistent    │stdio │ Restricted Tools │
+└───────────────┘      └──────────────────┘
 ```
 
-**API 获取地址：**
+执行流程：
 
-- 通义千问 API：[阿里云百炼平台](https://bailian.console.aliyun.com/)
-- Google 搜索 API：[SerpApi](https://serpapi.com/users/sign_in)
+```text
+用户问题
+  → 加载当前 session 历史
+  → 调用 LLM
+  → LLM 判断是否需要工具
+  → MCP 执行工具
+  → 工具结果反馈给 LLM
+  → 继续迭代或返回最终答案
+  → 保存成功对话历史
+```
 
-## 安装与运行
+## 项目结构
 
-### 1. 安装依赖
+```text
+all_agent/
+├── Agent/                  # Agent 执行循环
+├── LLM/                    # 异步 LLM 客户端
+├── LLMTools/               # 外部、文件和代码工具
+├── MCP_server/             # MCP Server 与生命周期管理
+├── Prompt/                 # 系统提示词和用户模板
+├── ErrorClass/             # 应用异常类型
+├── config/                 # 集中配置模型
+├── memory/                 # 会话存储抽象及内存实现
+├── models/                 # AgentResult、ToolResult 等数据模型
+├── observability/          # JSON 日志、上下文与脱敏
+├── security/               # 文件路径安全策略
+├── main/
+│   ├── main.py             # 命令行示例入口
+│   ├── web_app.py          # FastAPI 应用
+│   ├── task_registry.py    # 异步任务注册与取消
+│   └── static/
+│       ├── index.html
+│       ├── style.css
+│       └── app.js
+├── examples/               # 文件工具唯一默认工作目录
+├── evals/                  # 基础评测用例定义
+├── tests/                  # 单元测试和 MCP 集成测试
+├── .env.example
+└── requirements.txt
+```
+
+## 内置工具
+
+### 外部工具
+
+| 工具 | 说明 | 依赖 |
+|---|---|---|
+| `search_information` | 使用 Google 搜索获取在线信息 | SerpApi Key |
+| `weather_query` | 查询指定城市的实时天气 | `wttr.in` |
+
+### 文件和系统工具
+
+| 工具 | 说明 |
+|---|---|
+| `get_current_time` | 获取服务器当前时间 |
+| `read_file_content` | 读取 `examples` 内 UTF-8 文件，最大 5MB |
+| `list_directory` | 查看 `examples` 内的目录内容 |
+| `write_new_file` | 在 `examples` 内创建文件，不允许覆盖 |
+
+### 本机代码执行
+
+`execute_local_python_unsafe` 会直接在宿主机执行 Python，不是真正的安全沙盒，因此：
+
+- 默认不注册到 MCP。
+- 只有显式设置 `ENABLE_LOCAL_PYTHON_EXECUTION=true` 才会启用。
+- 当 `APP_ENVIRONMENT=production` 时始终禁用。
+- 即使在开发环境启用，也只应执行可信代码。
+- 工具有运行超时、输出长度限制和临时文件清理，但这些措施不等同于系统隔离。
+
+## 环境要求
+
+- Python 3.11 或更高版本。
+- 一个支持 OpenAI Chat Completions 和 Tool Calling 的模型服务。
+- 可选：SerpApi Key，用于在线搜索。
+
+## 安装
 
 ```bash
+git clone <your-repository-url>
+cd all_agent
+
+python -m venv .venv
+```
+
+Windows：
+
+```powershell
+.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 ```
 
-### 运行测试
-
-核心单元测试不访问真实 LLM、搜索或天气服务：
+Linux/macOS：
 
 ```bash
-python -m pytest -q
+source .venv/bin/activate
+pip install -r requirements.txt
 ```
 
-评测基线位于 `evals/cases.json`，可以先验证用例格式：
+## 配置
+
+复制环境变量示例：
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Linux/macOS：
 
 ```bash
-python -m evals.evaluator
+cp .env.example .env
 ```
 
-### 2. 命令行模式运行
+编辑 `.env`：
 
-```bash
-python -m main.main
+```env
+# LLM 必填配置
+MODEL_NAME="qwen3.7-max"
+LLM_BASE_URL="https://dashscope.aliyuncs.com/compatible-mode/v1"
+LLM_API_KEY=your-api-key
+
+# 搜索工具可选配置
+SEARCH_API_KEY=your-serpapi-key
+
+# Agent 运行边界
+MAX_AGENT_ITERATIONS=10
+AGENT_TIMEOUT_SECONDS=120
+LLM_TIMEOUT_SECONDS=60
+TOOL_TIMEOUT_SECONDS=15
+HISTORY_MAX_TOKENS=4000
+
+# 本机代码执行，默认关闭
+ENABLE_LOCAL_PYTHON_EXECUTION=false
+PYTHON_MAX_OUTPUT_CHARS=20000
+APP_ENVIRONMENT=development
+
+# 日志
+LOG_LEVEL=INFO
 ```
 
-### 3. Web 模式运行
+项目兼容早期版本的小写配置名称，但推荐统一使用以上大写名称。
+
+## 运行
+
+### Web 模式
 
 ```bash
 python -m main.web_app
 ```
 
-启动后访问 `http://127.0.0.1:8000` 即可使用 Web 聊天界面。
+浏览器访问：
 
-## 目前可实现功能
-
-1. **在线信息搜索** — 通过 Google 搜索获取实时信息
-2. **天气查询** — 查询指定城市的当日天气
-3. **文件内容读取** — 读取项目 `examples` 目录内的文件内容
-4. **目录文件列表** — 查询指定文件夹下的所有文件
-5. **获取当前时间** — 获取本机当前时间
-6. **创建文件** — 在 examples 目录中创建新文件（有安全限制）
-7. **Python 代码执行（默认关闭）** — 仅在非生产环境显式开启后可用，不属于安全沙盒
-
-## 工作流程
-
-```
-用户提问 → Agent 组装 Prompt → LLM 分析并决策
-                                    ↓
-                              需要调用工具？
-                              ↓是          ↓否
-                    MCP 执行工具       直接回复用户
-                         ↓
-                  工具结果反馈给 LLM
-                         ↓
-                  LLM 继续分析（循环）
-                         ↓
-                   最终回复用户
+```text
+http://127.0.0.1:8000
 ```
 
-## 运行结果协议
+应用启动时会同时启动 MCP 子进程并缓存工具列表；关闭 Web 服务时会自动释放 MCP 连接。
 
-Agent 现在返回结构化的 `AgentRunResult`，其中包含最终回答、终止原因、迭代次数、模型调用次数、工具调用轨迹和运行耗时。工具统一返回 `ToolResult`，以明确区分成功结果、错误码、错误信息和是否可重试。
+### 命令行示例
 
-当前终止原因包括：正常完成、最大迭代次数、重复工具调用、超时、工具错误和模型错误。
+```bash
+python -m main.main
+```
 
-## 当前限制
-
-- Web 版本已完成进程内多用户会话隔离；服务重启后历史仍会丢失，生产环境可通过 `ConversationStore` 接入 Redis。
-- LLM、天气和工具调用链路均为异步实现；同步 SerpApi SDK 通过工作线程隔离。
-- 文件工具默认只允许访问 `examples`，并拒绝路径穿越、敏感文件、符号链接绕过和覆盖写入。
-- Python 执行仍然不是安全沙盒，因此默认不注册；即使显式开启，生产环境也会强制禁用。
-- Web API 为每个请求生成 `request_id`，并使用 4xx/5xx 状态码区分校验、超时、模型和工具错误。
+当前命令行入口是固定问题的演示代码，主要用于快速验证 Agent 工作流程。
 
 ## Web API
 
-`POST /chat` 请求需要 UUID 格式的 `session_id` 和非空 `message`。响应包含 `request_id`、`session_id`、`stop_reason` 和运行耗时；所有响应还会设置 `X-Request-ID` 响应头。
+### 直接等待完整结果
 
-`DELETE /sessions/{session_id}` 可清除指定会话的进程内历史。
+```http
+POST /chat
+Content-Type: application/json
+```
+
+请求：
+
+```json
+{
+  "session_id": "b592a1dd-47ba-43b8-9660-71ec8c141765",
+  "message": "现在几点？"
+}
+```
+
+响应：
+
+```json
+{
+  "success": true,
+  "answer": "现在是……",
+  "stop_reason": "completed",
+  "request_id": "8bb6dc7d-b605-4d30-9370-660049031cd0",
+  "session_id": "b592a1dd-47ba-43b8-9660-71ec8c141765",
+  "duration_ms": 912.4
+}
+```
+
+### 创建异步任务
+
+```http
+POST /tasks
+```
+
+请求体与 `/chat` 相同，成功后返回 `202 Accepted`：
+
+```json
+{
+  "task_id": "f55441e8-f3dd-40ec-bd21-3c91721ef340",
+  "request_id": "8bb6dc7d-b605-4d30-9370-660049031cd0",
+  "session_id": "b592a1dd-47ba-43b8-9660-71ec8c141765"
+}
+```
+
+### 接收任务状态
+
+```http
+GET /tasks/{task_id}/events
+Accept: text/event-stream
+```
+
+SSE 只返回安全的运行状态，不暴露模型内部推理：
+
+```text
+data: {"type":"status","status":"thinking"}
+
+data: {"type":"status","status":"tool_call","tool":"get_current_time"}
+
+data: {"type":"result","status":"completed","data":{...}}
+```
+
+### 取消任务
+
+```http
+DELETE /tasks/{task_id}
+```
+
+### 清除会话
+
+```http
+DELETE /sessions/{session_id}
+```
+
+## 运行结果
+
+Agent 返回 `AgentRunResult`：
+
+| 字段 | 说明 |
+|---|---|
+| `answer` | 最终回答 |
+| `stop_reason` | 终止原因 |
+| `iterations` | 工具调用迭代轮数 |
+| `model_calls` | 模型调用次数 |
+| `tool_calls` | 工具名称、参数、结果和耗时记录 |
+| `duration_ms` | 总运行时间 |
+| `token_usage` | 模型返回的 token 使用量 |
+
+终止原因包括：
+
+- `completed`
+- `max_iterations`
+- `repeated_tool_call`
+- `timeout`
+- `tool_error`
+- `model_error`
+
+工具统一返回 `ToolResult`，包含：
+
+- `ok`
+- `data`
+- `error_code`
+- `error_message`
+- `retryable`
+
+## 会话与并发
+
+- 每次请求必须携带 UUID 格式的 `session_id`。
+- 不同会话拥有独立的历史消息。
+- 同一个会话的任务会串行执行，避免上下文交错。
+- 不同会话可以并发运行。
+- 历史消息存储在进程内，服务重启后会丢失。
+- `ConversationStore` 已抽象，可在后续替换为 Redis 或数据库实现。
+
+## MCP 生命周期
+
+- Web 应用启动时建立 MCP stdio 会话。
+- 工具列表只在连接建立时获取并缓存。
+- Agent 请求复用已有 MCP 会话。
+- MCP 调用异常时自动重连并重试一次。
+- Web 应用退出时关闭会话和子进程。
+- 如果脱离 Web 应用单独使用 Agent，MCP Manager 仍支持临时连接模式。
+
+## 日志与安全
+
+日志为 JSON 格式，主要字段包括：
+
+```json
+{
+  "timestamp": "2026-08-26T06:07:50.227666+00:00",
+  "level": "INFO",
+  "logger": "Agent.agent",
+  "message": "agent_run_finished",
+  "request_id": "...",
+  "session_id": "...",
+  "event": "agent_run_finished",
+  "duration_ms": 912.4,
+  "stop_reason": "completed",
+  "token_total": 328
+}
+```
+
+日志不会主动记录完整 Prompt、工具参数或工具结果，并会脱敏常见凭据字段。
+
+文件工具的默认安全边界：
+
+- 只能访问 `examples`。
+- 禁止 `../` 路径穿越。
+- 禁止读取 `.env*`、SSH Key、credentials 等敏感文件。
+- 禁止通过符号链接绕过允许目录。
+- 禁止覆盖已有文件。
+- 单文件读取上限为 5MB。
+
+## HTTP 状态码
+
+| 状态码 | 场景 |
+|---|---|
+| `200` | 任务正常完成 |
+| `202` | 异步任务创建成功 |
+| `409` | 达到迭代上限或检测到重复工具调用 |
+| `422` | 请求参数不正确 |
+| `502` | 模型或工具服务失败 |
+| `504` | Agent 执行超时 |
+| `500` | 未处理的服务内部错误 |
+
+所有 HTTP 响应都会携带 `X-Request-ID` 响应头，未知异常不会向客户端返回内部堆栈。
+
+## 测试
+
+运行完整测试：
+
+```bash
+python -m pytest -q
+```
+
+当前测试覆盖：
+
+- 配置加载与兼容字段。
+- Agent 直接回答、工具调用、重复调用和超时。
+- 会话隔离、历史裁剪和并发锁。
+- 文件权限、路径穿越与安全写入。
+- 本机 Python 执行、异常和超时。
+- Web 参数校验、错误脱敏和 SSE。
+- 结构化日志脱敏。
+- MCP 启动、会话复用、工具列表和关闭。
+
+基础评测用例位于 `evals/cases.json`。当前 `evals/evaluator.py` 用于校验用例结构：
+
+```bash
+python -m evals.evaluator
+```
+
+## 当前限制
+
+- 会话历史和任务状态均保存在进程内，不支持多实例共享。
+- SSE 只推送运行阶段和最终结果，不流式输出模型生成的每个 token。
+- 尚未实现用户身份认证和请求限流，不应直接暴露到公网。
+- SerpApi SDK 是同步接口，目前通过工作线程避免阻塞事件循环。
+- 本机 Python 执行工具不是真正的安全沙盒。
+- MCP 自动重连是单次恢复策略，不包含复杂熔断和退避机制。
+
+## License
+
+当前仓库尚未提供 License 文件。如计划公开分发，请根据使用目标补充合适的开源许可证。

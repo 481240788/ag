@@ -1,6 +1,7 @@
 from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletionMessage
 from typing import Optional,Any
+import time
 from config import Settings, get_settings
 from ErrorClass import LLMConfigMiss
 
@@ -26,6 +27,8 @@ class LLM_client:
             api_key=llm_api_key,
             timeout=self.settings.llm_timeout_seconds,
         )
+        self.last_usage: dict[str, int] = {}
+        self.last_duration_ms = 0.0
 
     async def think(
         self,
@@ -42,10 +45,18 @@ class LLM_client:
             raise LLMConfigMiss("[LLM] llm配置缺失,请确保相关信息配置完整")
 
         #拿到llm返回结果
+        started = time.perf_counter()
         llm_response = await self.llm_client.chat.completions.create(
             model=llm_model_name,
             messages=messages,
             tools=tools
         )
+        self.last_duration_ms = (time.perf_counter() - started) * 1000
+        usage = llm_response.usage
+        self.last_usage = {
+            "prompt_tokens": usage.prompt_tokens,
+            "completion_tokens": usage.completion_tokens,
+            "total_tokens": usage.total_tokens,
+        } if usage else {}
         return llm_response.choices[0].message
         

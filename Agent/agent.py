@@ -1,6 +1,6 @@
 import asyncio,json,logging,time
 from collections import Counter
-from typing import Any, Optional
+from typing import Any, Awaitable, Callable, Optional
 from config import Settings, get_settings
 from memory import ConversationStore, InMemoryConversationStore
 from models import AgentRunResult, StopReason, ToolCallRecord, ToolResult
@@ -54,17 +54,31 @@ class Agent:
         return f"{tool_call.function.name}:{tool_call.function.arguments}"
 
     async def run(
-        self, question: str, session_id: str, max_runtimes: int | None = None
+        self, question: str, session_id: str, max_runtimes: int | None = None,
+        event_callback: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
     ) -> AgentRunResult:
         session_id = str(session_id).strip()
         if not session_id:
             raise ValueError("session_id 不能为空")
         session_lock = await self.conversation_store.get_session_lock(session_id)
         async with session_lock:
-            return await self._run_locked(question, session_id, max_runtimes)
+            await self._emit(event_callback, {"type": "status", "status": "thinking"})
+            result = await self._run_locked(question, session_id, max_runtimes, event_callback)
+            logger.info("agent_run_finished", extra={
+                "event": "agent_run_finished",
+                "duration_ms": round(result.duration_ms, 2),
+                "stop_reason": result.stop_reason.value,
+                "token_total": result.token_usage.get("total_tokens", 0),
+            })
+            await self._emit(event_callback, {
+                "type": "result", "status": result.stop_reason.value,
+                "data": result.model_dump(mode="json"),
+            })
+            return result
 
     async def _run_locked(
-        self, question: str, session_id: str, max_runtimes: int | None
+        self, question: str, session_id: str, max_runtimes: int | None,
+        event_callback: Callable[[dict[str, Any]], Awaitable[None]] | None,
     ) -> AgentRunResult:
         started = time.perf_counter()
         max_iterations = max_runtimes or self.settings.max_agent_iterations
@@ -73,6 +87,7 @@ class Agent:
         records: list[ToolCallRecord] = []
         signatures: Counter[str] = Counter()
         iterations = model_calls = 0
+        token_usage: Counter[str] = Counter()
 
         try:
             async with asyncio.timeout(self.settings.agent_timeout_seconds):
@@ -87,6 +102,12 @@ class Agent:
                                 timeout=self.settings.llm_timeout_seconds,
                             )
                             model_calls += 1
+                            token_usage.update(getattr(self.llm_client, "last_usage", {}))
+                            logger.info("model_call_completed", extra={
+                                "event": "model_call_completed",
+                                "duration_ms": round(getattr(self.llm_client, "last_duration_ms", 0), 2),
+                                "token_total": token_usage.get("total_tokens", 0),
+                            })
                         except TimeoutError:
                             raise
                         except Exception:
@@ -102,7 +123,7 @@ class Agent:
                                 {"role": "assistant", "content": answer},
                             ])
                             return self._result(started, answer, StopReason.COMPLETED,
-                                                iterations, model_calls, records)
+                                                iterations, model_calls, records, dict(token_usage))
 
                         if iterations >= max_iterations:
                             return self._result(started, "超出最大迭代次数，已终止任务",
@@ -112,6 +133,10 @@ class Agent:
                         iterations += 1
                         messages.append(self._assistant_message(response))
                         for call in response.tool_calls:
+                            await self._emit(event_callback, {
+                                "type": "status", "status": "tool_call",
+                                "tool": call.function.name,
+                            })
                             signatures[self._signature(call)] += 1
                             if signatures[self._signature(call)] >= 3:
                                 return self._result(started, "检测到重复工具调用，已终止任务",
@@ -134,6 +159,11 @@ class Agent:
                                 name=call.function.name, arguments=arguments, result=result,
                                 duration_ms=(time.perf_counter() - tool_started) * 1000,
                             ))
+                            logger.info("tool_call_completed", extra={
+                                "event": "tool_call_completed",
+                                "duration_ms": round(records[-1].duration_ms, 2),
+                                "tool_name": call.function.name,
+                            })
                             #将ToolResult对象结果转换为字符串
                             messages.append({"role": "tool", "tool_call_id": call.id,
                                              "content": result.model_dump_json()})
@@ -148,7 +178,8 @@ class Agent:
     @staticmethod
     def _result(started: float, answer: str | None, reason: StopReason,
                 iterations: int, model_calls: int,
-                records: list[ToolCallRecord]) -> AgentRunResult:
+                records: list[ToolCallRecord],
+                token_usage: dict[str, int] | None = None) -> AgentRunResult:
         """
         记录Agent执行的结果
         """
@@ -156,4 +187,13 @@ class Agent:
             answer=answer, stop_reason=reason, iterations=iterations,
             model_calls=model_calls, tool_calls=records,
             duration_ms=(time.perf_counter() - started) * 1000,
+            token_usage=token_usage or {},
         )
+
+    @staticmethod
+    async def _emit(
+        callback: Callable[[dict[str, Any]], Awaitable[None]] | None,
+        event: dict[str, Any],
+    ) -> None:
+        if callback is not None:
+            await callback(event)
