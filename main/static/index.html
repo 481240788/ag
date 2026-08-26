@@ -1,365 +1,390 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-    <title>MCP Agent Chat</title>
-
+    <meta name="color-scheme" content="light">
+    <title>Doraemon Agent</title>
     <style>
-        * {
-            box-sizing: border-box;
+        :root {
+            --page: #f3f5f8;
+            --panel: #ffffff;
+            --surface: #f7f8fa;
+            --line: #e5e8ee;
+            --text: #172033;
+            --muted: #778198;
+            --accent: #4f64e8;
+            --accent-hover: #4155d2;
+            --accent-soft: #eef0ff;
+            --danger: #b54747;
+            --shadow: 0 18px 50px rgba(22, 32, 51, 0.09);
         }
+
+        * { box-sizing: border-box; }
 
         body {
             margin: 0;
-            font-family:
-                -apple-system,
-                BlinkMacSystemFont,
-                "Segoe UI",
-                "Microsoft YaHei",
-                sans-serif;
-
-            background: #f5f7fb;
-            height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
+            min-width: 320px;
+            min-height: 100vh;
+            color: var(--text);
+            background: var(--page);
+            font-family: Inter, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+            -webkit-font-smoothing: antialiased;
         }
 
-        .chat-container {
-            width: 900px;
-            height: 90vh;
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+        button, textarea { font: inherit; }
 
+        .page {
+            min-height: 100vh;
+            padding: 24px;
+            display: grid;
+            place-items: center;
+        }
+
+        .chat-shell {
+            width: min(1080px, 100%);
+            height: min(860px, calc(100vh - 48px));
+            min-height: 620px;
             display: flex;
             flex-direction: column;
             overflow: hidden;
+            background: var(--panel);
+            border: 1px solid rgba(221, 225, 233, 0.92);
+            border-radius: 20px;
+            box-shadow: var(--shadow);
         }
 
-        /* 顶部 */
         .header {
-            height: 60px;
+            min-height: 76px;
+            padding: 0 28px;
             display: flex;
             align-items: center;
-            padding: 0 24px;
-
-            border-bottom: 1px solid #eee;
-            font-size: 20px;
-            font-weight: 600;
+            justify-content: space-between;
+            gap: 20px;
+            border-bottom: 1px solid var(--line);
         }
 
-        .header span {
-            margin-left: 10px;
-            font-size: 13px;
-            color: #888;
-            font-weight: normal;
+        .brand { display: flex; align-items: center; gap: 13px; min-width: 0; }
+
+        .brand-mark {
+            width: 38px;
+            height: 38px;
+            flex: 0 0 auto;
+            display: grid;
+            place-items: center;
+            color: white;
+            background: var(--accent);
+            border-radius: 12px;
+            font-size: 18px;
+            font-weight: 700;
+            box-shadow: 0 8px 18px rgba(79, 100, 232, 0.24);
         }
 
-        /* 聊天区域 */
+        .brand-copy { min-width: 0; }
+        .brand-title { margin: 0; font-size: 16px; font-weight: 700; letter-spacing: -0.01em; }
+        .brand-subtitle { margin: 3px 0 0; color: var(--muted); font-size: 12px; }
+
+        .new-chat {
+            height: 38px;
+            padding: 0 15px;
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            color: #4e596d;
+            background: white;
+            cursor: pointer;
+            transition: border-color 160ms, background 160ms, color 160ms;
+        }
+
+        .new-chat:hover { color: var(--text); border-color: #cbd1dc; background: var(--surface); }
+        .new-chat:focus-visible, .send-button:focus-visible, textarea:focus-visible {
+            outline: 3px solid rgba(79, 100, 232, 0.18);
+            outline-offset: 2px;
+        }
+
         .chat-box {
             flex: 1;
-            padding: 25px;
+            min-height: 0;
+            padding: 36px max(28px, calc((100% - 780px) / 2));
             overflow-y: auto;
-            background: #fafbfc;
+            scroll-behavior: smooth;
+            background: var(--panel);
         }
 
-        /* 一条消息 */
-        .message {
-            display: flex;
-            margin-bottom: 20px;
-        }
+        .message { display: flex; align-items: flex-start; gap: 11px; margin-bottom: 25px; }
+        .message.user { justify-content: flex-end; }
 
-        /* Model 左边 */
-        .message.model {
-            justify-content: flex-start;
-        }
-
-        /* 用户右边 */
-        .message.user {
-            justify-content: flex-end;
+        .avatar {
+            width: 32px;
+            height: 32px;
+            flex: 0 0 auto;
+            display: grid;
+            place-items: center;
+            border-radius: 10px;
+            color: var(--accent);
+            background: var(--accent-soft);
+            font-size: 12px;
+            font-weight: 750;
         }
 
         .message-content {
-            max-width: 70%;
+            max-width: min(680px, 78%);
             padding: 12px 16px;
-            border-radius: 10px;
-            line-height: 1.6;
+            border-radius: 7px 17px 17px 17px;
+            color: #30394d;
+            background: var(--surface);
+            line-height: 1.7;
             white-space: pre-wrap;
-            word-break: break-word;
+            overflow-wrap: anywhere;
+            font-size: 14px;
         }
 
-        /* Model */
-        .model .message-content {
-            background: white;
-            border: 1px solid #e5e7eb;
-            color: #333;
-        }
-
-        /* User */
         .user .message-content {
-            background: #1677ff;
             color: white;
+            background: var(--accent);
+            border-radius: 17px 7px 17px 17px;
         }
 
-        /* 输入区域 */
-        .input-area {
-            border-top: 1px solid #eee;
-            padding: 15px;
+        .message.error .message-content { color: var(--danger); background: #fff3f2; }
 
+        .welcome {
+            padding: 4px 0 12px;
             display: flex;
-            gap: 10px;
-            background: white;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
         }
+
+        .welcome-mark {
+            width: 52px;
+            height: 52px;
+            margin-bottom: 16px;
+            display: grid;
+            place-items: center;
+            color: var(--accent);
+            background: var(--accent-soft);
+            border-radius: 16px;
+            font-weight: 750;
+        }
+
+        .welcome h2 { margin: 0; font-size: 20px; letter-spacing: -0.02em; }
+        .welcome p { margin: 9px 0 0; color: var(--muted); font-size: 14px; }
+
+        .loading .message-content { display: flex; align-items: center; gap: 5px; min-height: 45px; }
+        .dot { width: 6px; height: 6px; border-radius: 50%; background: #929bb0; animation: pulse 1.2s infinite ease-in-out; }
+        .dot:nth-child(2) { animation-delay: 150ms; }
+        .dot:nth-child(3) { animation-delay: 300ms; }
+        @keyframes pulse { 0%, 60%, 100% { opacity: .35; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-3px); } }
+
+        .composer-wrap {
+            padding: 18px max(22px, calc((100% - 820px) / 2)) 20px;
+            border-top: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.96);
+        }
+
+        .composer {
+            display: flex;
+            align-items: flex-end;
+            gap: 10px;
+            padding: 8px;
+            border: 1px solid #dce0e8;
+            border-radius: 15px;
+            background: white;
+            box-shadow: 0 5px 18px rgba(22, 32, 51, 0.05);
+            transition: border-color 160ms, box-shadow 160ms;
+        }
+
+        .composer:focus-within { border-color: #aeb8f5; box-shadow: 0 5px 20px rgba(79, 100, 232, 0.09); }
 
         textarea {
             flex: 1;
-
+            min-height: 44px;
+            max-height: 150px;
+            padding: 11px 12px;
             resize: none;
-            height: 50px;
-
-            border: 1px solid #ddd;
-            border-radius: 8px;
-
-            padding: 12px;
-
+            border: 0;
+            outline: 0;
+            color: var(--text);
+            background: transparent;
+            line-height: 1.55;
             font-size: 14px;
-            font-family: inherit;
-
-            outline: none;
         }
 
-        textarea:focus {
-            border-color: #1677ff;
-        }
+        textarea::placeholder { color: #9aa2b3; }
 
-        button {
-            width: 80px;
-
-            border: none;
-            border-radius: 8px;
-
-            background: #1677ff;
+        .send-button {
+            width: 46px;
+            height: 44px;
+            flex: 0 0 auto;
+            border: 0;
+            border-radius: 11px;
             color: white;
-
+            background: var(--accent);
             cursor: pointer;
-            font-size: 14px;
+            font-size: 18px;
+            transition: background 160ms, transform 160ms;
         }
 
-        button:hover {
-            background: #4096ff;
+        .send-button:hover { background: var(--accent-hover); }
+        .send-button:active { transform: scale(.96); }
+        .send-button:disabled { cursor: not-allowed; opacity: .48; }
+        .hint { margin: 8px 3px 0; color: #9aa2b3; text-align: center; font-size: 11px; }
+
+        @media (max-width: 720px) {
+            .page { padding: 0; }
+            .chat-shell { width: 100%; height: 100vh; min-height: 0; border: 0; border-radius: 0; box-shadow: none; }
+            .header { min-height: 66px; padding: 0 16px; }
+            .brand-mark { width: 34px; height: 34px; }
+            .brand-subtitle { display: none; }
+            .new-chat { height: 35px; padding: 0 11px; }
+            .chat-box { padding: 26px 16px; }
+            .message-content { max-width: 84%; }
+            .composer-wrap { padding: 12px 12px max(12px, env(safe-area-inset-bottom)); }
+            .hint { display: none; }
         }
 
-        button:disabled {
-            background: #aaa;
-            cursor: not-allowed;
-        }
-
-        /* Loading */
-        .loading {
-            color: #999;
-            font-size: 14px;
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; }
         }
     </style>
 </head>
-
-
 <body>
+<main class="page">
+    <section class="chat-shell" aria-label="Doraemon Agent 聊天窗口">
+        <header class="header">
+            <div class="brand">
+                <div class="brand-mark" aria-hidden="true">D</div>
+                <div class="brand-copy">
+                    <h1 class="brand-title">Doraemon Agent</h1>
+                    <p class="brand-subtitle">MCP 驱动的智能助手</p>
+                </div>
+            </div>
+            <button id="newChatButton" class="new-chat" type="button">新对话</button>
+        </header>
 
-<div class="chat-container">
-
-    <div class="header">
-        🤖 MCP Agent
-        <span>FastAPI + Agent</span>
-    </div>
-
-
-    <div id="chatBox" class="chat-box">
-
-        <!-- 初始消息 -->
-        <div class="message model">
-            <div class="message-content">
-                你好，我是你的 Agent，有什么可以帮你？
+        <div id="chatBox" class="chat-box" role="log" aria-live="polite">
+            <div id="welcome" class="welcome">
+                <div class="welcome-mark" aria-hidden="true">AI</div>
+                <h2>今天想解决什么问题？</h2>
+                <p>我可以调用工具、分析信息，也可以协助你完成代码任务。</p>
             </div>
         </div>
 
-    </div>
-
-
-    <div class="input-area">
-
-        <textarea
-            id="messageInput"
-            placeholder="请输入你的问题，例如：做一个 Python 程序计算 1~100 的所有素数..."
-        ></textarea>
-
-        <button id="sendButton">
-            发送
-        </button>
-
-    </div>
-
-</div>
-
+        <footer class="composer-wrap">
+            <div class="composer">
+                <textarea id="messageInput" rows="1" maxlength="10000" aria-label="消息输入框" placeholder="输入你的问题…"></textarea>
+                <button id="sendButton" class="send-button" type="button" aria-label="发送消息">↑</button>
+            </div>
+            <p class="hint">Enter 发送 · Shift + Enter 换行</p>
+        </footer>
+    </section>
+</main>
 
 <script>
-
     const chatBox = document.getElementById("chatBox");
     const messageInput = document.getElementById("messageInput");
     const sendButton = document.getElementById("sendButton");
+    const newChatButton = document.getElementById("newChatButton");
+
+    function createSessionId() {
+        return crypto.randomUUID();
+    }
 
     let sessionId = localStorage.getItem("agent_session_id");
     if (!sessionId) {
-        sessionId = crypto.randomUUID();
+        sessionId = createSessionId();
         localStorage.setItem("agent_session_id", sessionId);
     }
 
-
-    // 添加消息
-    function addMessage(content, role) {
-
-        const message = document.createElement("div");
-
-        message.className = `message ${role}`;
-
-        const messageContent = document.createElement("div");
-
-        messageContent.className = "message-content";
-
-        messageContent.textContent = content;
-
-        message.appendChild(messageContent);
-
-        chatBox.appendChild(message);
-
-        // 自动滚动到底部
-        chatBox.scrollTop = chatBox.scrollHeight;
-
-        return messageContent;
+    function removeWelcome() {
+        document.getElementById("welcome")?.remove();
     }
 
+    function addMessage(content, role, isError = false) {
+        removeWelcome();
+        const message = document.createElement("div");
+        message.className = `message ${role}${isError ? " error" : ""}`;
 
-    // 发送消息
-    async function sendMessage() {
-
-        const message = messageInput.value.trim();
-
-        if (!message) {
-            return;
+        if (role === "model") {
+            const avatar = document.createElement("div");
+            avatar.className = "avatar";
+            avatar.textContent = "AI";
+            avatar.setAttribute("aria-hidden", "true");
+            message.appendChild(avatar);
         }
 
+        const contentNode = document.createElement("div");
+        contentNode.className = "message-content";
+        contentNode.textContent = content;
+        message.appendChild(contentNode);
+        chatBox.appendChild(message);
+        chatBox.scrollTop = chatBox.scrollHeight;
+        return message;
+    }
 
-        // 显示用户消息
+    function addLoading() {
+        const message = addMessage("", "model");
+        message.classList.add("loading");
+        const content = message.querySelector(".message-content");
+        content.innerHTML = '<span class="dot"></span><span class="dot"></span><span class="dot"></span>';
+        return message;
+    }
+
+    function resizeInput() {
+        messageInput.style.height = "auto";
+        messageInput.style.height = `${Math.min(messageInput.scrollHeight, 150)}px`;
+    }
+
+    async function sendMessage() {
+        const message = messageInput.value.trim();
+        if (!message || sendButton.disabled) return;
+
         addMessage(message, "user");
-
-
-        // 清空输入框
         messageInput.value = "";
-
-
-        // 禁用发送按钮
+        resizeInput();
         sendButton.disabled = true;
-
-        sendButton.textContent = "执行中";
-
-
-        // 添加 Loading
-        const loadingMessage = addMessage(
-            "Agent 正在执行，请稍等...",
-            "model"
-        );
-
-        loadingMessage.classList.add("loading");
-
+        const loading = addLoading();
 
         try {
-
             const response = await fetch("/chat", {
-
                 method: "POST",
-
-                headers: {
-                    "Content-Type": "application/json"
-                },
-
-                body: JSON.stringify({
-                    session_id: sessionId,
-                    message: message
-                })
-
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ session_id: sessionId, message })
             });
-
-
             const data = await response.json();
-
-
-            // 删除 Loading
-            loadingMessage.parentElement.remove();
-
-
-            if (data.success) {
-
-                addMessage(
-                    data.answer || "任务未能生成有效回复，请稍后重试。",
-                    "model"
-                );
-
-            } else {
-
-                addMessage(
-                    data.answer || "请求执行失败，请稍后重试。",
-                    "model"
-                );
-
-            }
-
-
+            loading.remove();
+            const answer = data.answer || "任务未能生成有效回复，请稍后重试。";
+            addMessage(answer, "model", !data.success);
         } catch (error) {
-
-            loadingMessage.textContent =
-                "请求失败：" + error.message;
-
+            loading.remove();
+            addMessage(`连接服务失败：${error.message}`, "model", true);
+        } finally {
+            sendButton.disabled = false;
+            messageInput.focus();
         }
+    }
 
-
-        sendButton.disabled = false;
-
-        sendButton.textContent = "发送";
-
-
+    async function startNewChat() {
+        const previousSessionId = sessionId;
+        sessionId = createSessionId();
+        localStorage.setItem("agent_session_id", sessionId);
+        chatBox.innerHTML = '<div id="welcome" class="welcome"><div class="welcome-mark" aria-hidden="true">AI</div><h2>新对话已准备好</h2><p>输入问题，开始一次全新的任务。</p></div>';
+        try {
+            await fetch(`/sessions/${previousSessionId}`, { method: "DELETE" });
+        } catch (_) {
+            // 清理失败不阻止用户开始新的本地会话。
+        }
         messageInput.focus();
     }
 
-
-    // 点击发送
-    sendButton.addEventListener(
-        "click",
-        sendMessage
-    );
-
-
-    // Enter 发送
-    messageInput.addEventListener(
-        "keydown",
-        function(event) {
-
-            // Enter
-            if (event.key === "Enter" && !event.shiftKey) {
-
-                event.preventDefault();
-
-                sendMessage();
-
-            }
-
+    sendButton.addEventListener("click", sendMessage);
+    newChatButton.addEventListener("click", startNewChat);
+    messageInput.addEventListener("input", resizeInput);
+    messageInput.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" && !event.shiftKey) {
+            event.preventDefault();
+            sendMessage();
         }
-    );
-
+    });
 </script>
-
 </body>
-
 </html>
