@@ -1,5 +1,5 @@
 from mcp.server.fastmcp import FastMCP
-from LLMTools.outside_tools import search_information, weather_query
+from LLMTools.outside_tools import search_information, weather_query_gaode,route_planning
 from LLMTools.sys_tools import get_current_time, read_file_content, list_directory, write_new_file
 from LLMTools.code_tools import execute_local_python_unsafe
 from config import get_settings
@@ -8,7 +8,8 @@ mcp = FastMCP("Doraemon")
 
 #outside_tools
 mcp.tool()(search_information)
-mcp.tool()(weather_query)
+mcp.tool()(weather_query_gaode)
+mcp.tool()(route_planning)
 
 #sys_tools
 mcp.tool()(get_current_time)

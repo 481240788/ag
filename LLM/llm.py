@@ -52,6 +52,7 @@ class LLM_client:
             tools=tools
         )
         self.last_duration_ms = (time.perf_counter() - started) * 1000
+        #拿到此次对话的token信息
         usage = llm_response.usage
         self.last_usage = {
             "prompt_tokens": usage.prompt_tokens,

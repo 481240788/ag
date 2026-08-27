@@ -14,6 +14,8 @@ class Settings(BaseModel):
     llm_api_key: str
     #goole_search_api
     search_api_key: str | None = None
+    #gaode_map_api
+    gaode_map_api: str | None = None
     #agent最大可迭代次数，没传默认为10
     max_agent_iterations: int = Field(default=10, ge=1)
     #agent运行允许的最大运行时间
@@ -24,15 +26,20 @@ class Settings(BaseModel):
     llm_timeout_seconds: float = Field(default=60, gt=0)
     #历史消息允许记录的最大长度(token)
     history_max_tokens: int = Field(default=4_000, ge=100)
+
+    #关于mcp工具中code工具的配置
     enable_local_python_execution: bool = False
     python_max_output_chars: int = Field(default=20_000, ge=1_000)
     app_environment: str = "development"
     log_level: str = "INFO"
-    #多余字段不报错
+    #设置当前类属性，在创建对象时传入多余字段不报错，直接忽略
     model_config = ConfigDict(extra="ignore")
 
     @classmethod
     def from_env(cls, env_file: str | Path = ".env") -> "Settings":
+        """
+        从环境变量/配置文件中加载配置
+        """
         file_values = dotenv_values(env_file)
 
         def value(*names: str, default=None):
@@ -50,6 +57,7 @@ class Settings(BaseModel):
             llm_base_url=value("LLM_BASE_URL", "base_url"),
             llm_api_key=value("LLM_API_KEY", "api"),
             search_api_key=value("SEARCH_API_KEY", "search_api"),
+            gaode_map_api = value("GAODE_MAP_API","gaode_map_api"),
             max_agent_iterations=value("MAX_AGENT_ITERATIONS", default=10),
             agent_timeout_seconds=value("AGENT_TIMEOUT_SECONDS", default=120),
             tool_timeout_seconds=value("TOOL_TIMEOUT_SECONDS", default=15),
@@ -65,6 +73,6 @@ class Settings(BaseModel):
 
 
 @lru_cache
-#利用缓存读取数据
+#将函数返回结果存入缓存，允许多次调用时，直接从缓存中拿到结果
 def get_settings() -> Settings:
     return Settings.from_env()

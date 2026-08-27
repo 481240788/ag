@@ -50,6 +50,7 @@ class InMemoryConversationStore(ConversationStore):
         session_id = self._normalize_session_id(session_id)
         async with self._state_lock:
             history = self._messages.setdefault(session_id, [])
+            #将messages中的信息加入history
             history.extend(deepcopy(messages))
             history = history[-self.max_messages :]
             while len(history) > 1 and self._estimate_tokens(history) > self.max_tokens:

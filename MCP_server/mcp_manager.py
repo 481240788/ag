@@ -1,17 +1,10 @@
-import asyncio
-import json
-import logging
-import os
-import sys
-import time
+import asyncio,json,logging,os,sys,time
 from contextlib import AsyncExitStack, asynccontextmanager
 from typing import Any
-
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from mcp.types import Tool
 from openai.types.chat import ChatCompletionMessageToolCall
-
 from models import ToolResult
 from path_manager import PathManager
 
@@ -82,6 +75,9 @@ class MCPManager:
                 yield session
 
     def mcp_to_llm(self, tool_list: list[Tool]) -> list[dict[str, Any]]:
+        """
+        将mcp输出的可用工具list转换为llm传入参数的格式
+        """
         return [{
             "type": "function",
             "function": {
@@ -94,6 +90,9 @@ class MCPManager:
     async def parse_llm_response(
         self, session: ClientSession, tool_call: ChatCompletionMessageToolCall
     ) -> ToolResult:
+        """
+        将llm返回的工具调用信息解析后传递给mcp进行工具调用，返回结果
+        """
         try:
             arguments = json.loads(tool_call.function.arguments)
         except json.JSONDecodeError as error:
@@ -127,6 +126,9 @@ class MCPManager:
         return "\n".join(getattr(item, "text", str(item)) for item in content)
 
     async def get_mcp_tools(self, session: ClientSession) -> list[Tool]:
+        """
+        得到可用工具list
+        """
         if session is self._session and self._tools is not None:
             return self._tools
         return (await session.list_tools()).tools
