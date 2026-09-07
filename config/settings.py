@@ -1,4 +1,6 @@
 import os
+import json
+from typing import Annotated
 from functools import lru_cache
 from pathlib import Path
 from dotenv import dotenv_values
@@ -18,6 +20,20 @@ class Settings(BaseModel):
     gaode_map_api: str | None = None
     #agent最大可迭代次数，没传默认为10
     max_agent_iterations: int = Field(default=10, ge=1)
+    max_tool_calls: int = Field(default=16, ge=1)
+    tool_concurrency_limits: dict[str, Annotated[int, Field(strict=True, ge=1)]] = Field(
+        default_factory=lambda: {
+            "search_information": 2,
+            "weather_query_gaode": 3,
+            "route_planning": 2,
+            "query_train_tickets": 1,
+            "get_current_time": 8,
+            "read_file_content": 4,
+            "list_directory": 4,
+            "write_new_file": 1,
+            "execute_local_python_unsafe": 1,
+        }
+    )
     #agent运行允许的最大运行时间
     agent_timeout_seconds: float = Field(default=120, gt=0)
     #tools调用允许的最大运行时间
@@ -52,13 +68,20 @@ class Settings(BaseModel):
                     return file_values[name]
             return default
 
+        limits = cls.model_fields["tool_concurrency_limits"].default_factory()
+        overrides = json.loads(value("TOOL_CONCURRENCY_LIMITS", default="{}"))
+        if not isinstance(overrides, dict):
+            raise ValueError("TOOL_CONCURRENCY_LIMITS 必须为 JSON 对象")
+        limits.update(overrides)
         return cls(
+            tool_concurrency_limits=limits,
             model_name=value("MODEL_NAME", "model_name"),
             llm_base_url=value("LLM_BASE_URL", "base_url"),
             llm_api_key=value("LLM_API_KEY", "api"),
             search_api_key=value("SEARCH_API_KEY", "search_api"),
             gaode_map_api = value("GAODE_MAP_API","gaode_map_api"),
             max_agent_iterations=value("MAX_AGENT_ITERATIONS", default=10),
+            max_tool_calls=value("MAX_TOOL_CALLS", default=16),
             agent_timeout_seconds=value("AGENT_TIMEOUT_SECONDS", default=120),
             tool_timeout_seconds=value("TOOL_TIMEOUT_SECONDS", default=15),
             llm_timeout_seconds=value("LLM_TIMEOUT_SECONDS", default=60),

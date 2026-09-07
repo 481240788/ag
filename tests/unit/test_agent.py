@@ -60,6 +60,38 @@ def test_agent_direct_answer_and_memory():
     assert len(history) == 2
 
 
+def test_signature_normalizes_json():
+    assert Agent._signature(tool_call(arguments='{"a":1,"b":2}')) == Agent._signature(
+        tool_call(arguments='{"b": 2, "a": 1}'))
+
+
+def test_tool_budget_limits_large_batch():
+    agent = make_agent([response(calls=[tool_call(str(i), arguments='{"n":%d}' % i) for i in range(5)])])
+    agent.settings.max_tool_calls = 2
+    agent.llm_client.last_usage = {"total_tokens": 23}
+    result = asyncio.run(agent.run("批量查询", session_id="budget"))
+    assert result.stop_reason == StopReason.TOOL_CALL_LIMIT
+    assert len(result.tool_calls) == 2
+    assert result.token_usage["total_tokens"] == 23
+
+
+def test_timeout_retains_completed_usage():
+    class LaterTimeout(FakeLLM):
+        last_usage = {"total_tokens": 42}
+
+        async def think(self, messages, **kwargs):
+            if self.received_messages:
+                raise TimeoutError()
+            return await super().think(messages, **kwargs)
+
+    agent = make_agent([])
+    agent.llm_client = LaterTimeout([response(calls=[tool_call()])])
+    result = asyncio.run(agent.run("超时", session_id="usage"))
+    assert result.stop_reason == StopReason.TIMEOUT
+    assert result.token_usage["total_tokens"] == 42
+    assert len(result.tool_calls) == 1
+
+
 def test_agent_calls_tool_then_answers():
     agent = make_agent([response(calls=[tool_call()]), response("现在")])
     result = asyncio.run(agent.run("几点", session_id="session-a"))

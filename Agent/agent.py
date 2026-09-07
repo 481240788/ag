@@ -14,6 +14,7 @@ class Agent:
                  settings: Optional[Settings] = None, llm_client: Any = None,
                  mcp_manager: Any = None,
                  conversation_store: ConversationStore | None = None) -> None:
+        
         self.settings = settings or get_settings()
         self.conversation_store = conversation_store or InMemoryConversationStore(
             max_tokens=self.settings.history_max_tokens
@@ -55,18 +56,33 @@ class Agent:
         output:
             解析assistant的response后组装标准messages信息
         """
-        return {"role": "assistant", "content": response.content, "tool_calls": [
-            {"id": call.id, "type": "function", "function": {
-                "name": call.function.name, "arguments": call.function.arguments}}
-            for call in response.tool_calls
-        ]}
+        return {"role": "assistant",
+                "content": response.content,
+                "tool_calls": [
+                    {
+                        "id": call.id, 
+                        "type": "function", 
+                        "function": {
+                            "name": call.function.name, 
+                            "arguments": call.function.arguments
+                            }
+                        }
+                    for call in response.tool_calls
+                ]
+        }
 
     @staticmethod
     def _signature(tool_call: Any) -> str:
         """
-        解析工具调用的信息为一个字符串形式
+        解析工具调用的信息为一个字符串形式，
+        以便后续可以检查统计工具调用次数，防止重复调用
         """
-        return f"{tool_call.function.name}:{tool_call.function.arguments}"
+        arguments = tool_call.function.arguments
+        try:
+            arguments = json.dumps(json.loads(arguments), sort_keys=True, ensure_ascii=False)
+        except (ValueError, TypeError):
+            pass
+        return f"{tool_call.function.name}:{arguments}"
 
     async def run(
         self, question: str, session_id: str, max_runtimes: int | None = None,
@@ -148,7 +164,7 @@ class Agent:
                         except Exception:
                             logger.exception("模型调用失败 session_id=%s", session_id)
                             return self._result(started, "模型调用失败，请检查模型配置或稍后重试。", StopReason.MODEL_ERROR,
-                                                iterations, model_calls, records)
+                                                iterations, model_calls, records, dict(token_usage))
                         #如果llm不需要调用工具
                         if not response.tool_calls:
                             #拿到llm返回的文本内容
@@ -165,12 +181,18 @@ class Agent:
                         if iterations >= max_iterations:
                             return self._result(started, "超出最大迭代次数，已终止任务",
                                                 StopReason.MAX_ITERATIONS, iterations,
-                                                model_calls, records)
+                                                model_calls, records, dict(token_usage))
 
                         iterations += 1
                         #将llm的返回content以及toolcall信息保存为一次messages
                         messages.append(self._assistant_message(response))
                         for call in response.tool_calls:
+                            if len(records) >= self.settings.max_tool_calls:
+                                return self._result(
+                                    started, "已达到工具调用上限，请缩小查询范围后重试。",
+                                    StopReason.TOOL_CALL_LIMIT, iterations, model_calls,
+                                    records, dict(token_usage),
+                                )
                             #循环调用工具
                             await self._emit(event_callback, {
                                 "type": "status", "status": "tool_call",
@@ -181,7 +203,7 @@ class Agent:
                             if signatures[self._signature(call)] >= 3:
                                 return self._result(started, "检测到重复工具调用，已终止任务",
                                                     StopReason.REPEATED_TOOL_CALL, iterations,
-                                                    model_calls, records)
+                                                    model_calls, records, dict(token_usage))
                             #记录工具调用起始时间
                             tool_started = time.perf_counter()
                             #等待mcp_serever调用工具并传回结果
@@ -207,17 +229,20 @@ class Agent:
                                 "event": "tool_call_completed",
                                 "duration_ms": round(records[-1].duration_ms, 2),
                                 "tool_name": call.function.name,
+                                "tool_ok": result.ok,
+                                "error_code": result.error_code,
+                                "retryable": result.retryable,
                             })
                             #将当前tool执行的结果传入messages
                             messages.append({"role": "tool", "tool_call_id": call.id,
                                              "content": result.model_dump_json()})
         except TimeoutError:
             return self._result(started, "任务执行超时", StopReason.TIMEOUT,
-                                iterations, model_calls, records)
+                                iterations, model_calls, records, dict(token_usage))
         except Exception:
             logger.exception("工具服务执行失败 session_id=%s", session_id)
             return self._result(started, "工具服务执行失败", StopReason.TOOL_ERROR,
-                                iterations, model_calls, records)
+                                iterations, model_calls, records, dict(token_usage))
 
     @staticmethod
     def _result(started: float, answer: str | None, reason: StopReason,

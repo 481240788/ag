@@ -27,6 +27,7 @@ class ToolResult(BaseModel):
 
 
 class StopReason(str, Enum):
+    TOOL_CALL_LIMIT = "tool_call_limit"
     """
     记录Agent结束原因
     """

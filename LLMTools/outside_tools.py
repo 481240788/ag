@@ -203,14 +203,14 @@ async def route_planning(
     )
 
     #判断起点终点编码是否成功
-    if not origin_result.success:
+    if not origin_result.ok:
         return ToolResult.failure(
             "ORIGIN_GEOCODE_ERROR",
             f"起点地理编码失败：{origin_result.error_message}",
             retryable=False
         )
 
-    if not destination_result.success:
+    if not destination_result.ok:
         return ToolResult.failure(
             "DESTINATION_GEOCODE_ERROR",
             f"终点地理编码失败：{destination_result.error_message}",
@@ -309,7 +309,7 @@ async def _driving_route(
 
     data = await _request_amap(url, params)
 
-    if not data.success:
+    if not data.ok:
         return data
 
     route = data.data.get("route", {})
@@ -382,7 +382,7 @@ async def _walking_route(
     }
 
     data = await _request_amap(url, params)
-    if not data.success:
+    if not data.ok:
         return data
     route = data.data.get("route", {})
     paths = route.get("paths", [])
@@ -441,7 +441,7 @@ async def _transit_route(
     }
 
     data = await _request_amap(url, params)
-    if not data.success:
+    if not data.ok:
         return data
     route = data.data.get("route", {})
     transits = route.get("transits", [])
@@ -583,7 +583,7 @@ async def geocode(
             url,
             params
         )
-        if not data_result.success:
+        if not data_result.ok:
             return data_result
         data = data_result.data
         geocodes = data.get(

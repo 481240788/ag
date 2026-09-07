@@ -35,7 +35,8 @@ class JsonFormatter(logging.Formatter):
             "request_id": request_id_var.get(),
             "session_id": session_id_var.get(),
         }
-        for key in ("event", "duration_ms", "tool_name", "stop_reason", "token_total"):
+        for key in ("event", "duration_ms", "tool_name", "stop_reason", "token_total",
+                    "tool_ok", "error_code", "retryable"):
             if hasattr(record, key):
                 payload[key] = getattr(record, key)
         if record.exc_info:
