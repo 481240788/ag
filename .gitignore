@@ -1,6 +1,7 @@
 .env
 .env.*
 !.env.example
+!.env.docker.example
 __pycache__/
 *.py[cod]
 顺序清单.md
